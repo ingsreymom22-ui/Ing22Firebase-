@@ -226,7 +226,7 @@ const App: React.FC = () => {
         dateTextColor: '#f97316'
       },
       attendance: {},
-      updatedAt: Date.now(),
+      updatedAt: 0, // Initialize to 0 so cloud data (if any) always wins on first sync
     };
   });
   

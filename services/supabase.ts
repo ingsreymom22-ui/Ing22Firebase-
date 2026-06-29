@@ -17,20 +17,7 @@ let lastSyncStatus = false;
 let isSyncingQueue = false;
 
 export const checkSupabaseConnection = async () => {
-    if (typeof window === 'undefined') return false;
-    if (!window.navigator.onLine) return false;
-    
-    try {
-        // Try a tiny ping to check if Firebase is actually reachable
-        const q = query(collection(db, 'dps_data'), where('folderId', '==', 'ping'), limit(1));
-        await Promise.race([
-            getDocs(q),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
-        ]);
-        return true;
-    } catch (e) {
-        return false;
-    }
+    return typeof window !== 'undefined' && window.navigator.onLine;
 };
 
 // Mock Supabase Auth object to keep App.tsx working seamlessly
@@ -204,13 +191,21 @@ export const fetchData = async (userId: string) => {
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let latestDataState: any = null;
+let isCurrentlySaving = false;
 
 export const saveData = async (userId: string, dataState: any, instant: boolean = false) => {
+  if (!userId || userId === 'unknown') return;
   latestDataState = dataState;
   
   if (saveTimeout) clearTimeout(saveTimeout);
   
   const performSave = async () => {
+    if (isCurrentlySaving) {
+      // If a save is already in progress, reschedule this one
+      saveTimeout = setTimeout(performSave, 500);
+      return;
+    }
+
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       console.log("Device offline. Queuing data for sync.");
       await localIndexedDB.queueSync(userId, latestDataState);
@@ -218,6 +213,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       return;
     }
 
+    isCurrentlySaving = true;
     try {
       const dataStr = JSON.stringify(latestDataState);
       const size = dataStr.length;
@@ -225,12 +221,12 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       let payload = {};
       if (size > MAX_FIRESTORE_SIZE) {
         // Store large payload in chunks in Firestore
-        console.log(`Payload size (${size} chars) exceeds chunk threshold. Chunking in Firestore.`);
         const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+        const batch = writeBatch(db);
         
         for (let i = 0; i < numChunks; i++) {
            const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-           await setDoc(doc(db, `dps_data/${userId}/chunks`, i.toString()), { data: chunkStr });
+           batch.set(doc(db, `dps_data/${userId}/chunks`, i.toString()), { data: chunkStr });
         }
 
         payload = {
@@ -240,8 +236,12 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
            numChunks: numChunks,
            isChunked: true
         };
+        
+        await Promise.race([
+            batch.commit(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Batch Timeout")), 10000))
+        ]);
       } else {
-        // Store normally in Firestore but AS A STRING to preserve key order
         payload = {
            folderId: userId,
            updatedAt: latestDataState.updatedAt || new Date().getTime(),
@@ -251,10 +251,9 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
         };
       }
       
-      // Add a timeout so it doesn't hang the UI forever if network drops silently
       await Promise.race([
           setDoc(doc(db, 'dps_data', userId), payload),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Save Timeout")), 8000))
       ]);
       
       lastSyncStatus = true;
@@ -262,6 +261,8 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       console.error("Firebase exception during save:", error);
       await localIndexedDB.queueSync(userId, latestDataState);
       lastSyncStatus = false;
+    } finally {
+      isCurrentlySaving = false;
     }
   };
 
