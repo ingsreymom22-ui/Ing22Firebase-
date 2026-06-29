@@ -28,7 +28,7 @@ export const supabase = {
             user: { 
                 id: user.uid, 
                 email: user.email, 
-                user_metadata: { full_name: user.displayName || 'Firebase User' } 
+                user_metadata: { full_name: user.displayName || user.email?.split('@')[0] || 'User' } 
             } 
         } : null;
         callback('SIGNED_IN', session);
@@ -42,7 +42,7 @@ export const supabase = {
           user: { 
               id: user.uid, 
               email: user.email, 
-              user_metadata: { full_name: user.displayName || 'Firebase User' } 
+              user_metadata: { full_name: user.displayName || user.email?.split('@')[0] || 'User' } 
           } 
       } : null;
       return { data: { session } };
@@ -214,7 +214,12 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
         };
       }
       
-      await setDoc(doc(db, 'dps_data', userId), payload);
+      // Add a timeout so it doesn't hang the UI forever if network drops silently
+      await Promise.race([
+          setDoc(doc(db, 'dps_data', userId), payload),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000))
+      ]);
+      
       lastSyncStatus = true;
       console.log("Firebase sync successful at", new Date().toLocaleTimeString());
     } catch (error) {

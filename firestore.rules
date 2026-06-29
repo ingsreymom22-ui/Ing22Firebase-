@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /dps_data/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /dps_shares/{shareId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.resource.data.owner_id == request.auth.uid;
+    }
+    match /dps_backups/{backupId} {
+      allow read, write: if request.auth != null && resource.data.owner_id == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.owner_id == request.auth.uid;
+    }
+  }
+}
