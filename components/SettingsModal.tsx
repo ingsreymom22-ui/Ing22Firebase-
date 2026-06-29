@@ -21,6 +21,7 @@ interface Props {
   onLogout?: () => void;
   appData?: AppData;
   onImportData?: (importedData: AppData) => void;
+  lastSyncedTime?: number | null;
 }
 
 const fontFamilies = [
@@ -163,7 +164,7 @@ const getFirebaseDomainsUrl = (): string => {
   return `https://console.firebase.google.com/project/${config.projectId}/authentication/settings`;
 };
 
-export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate, currentUser, onLogin, onPhoneLogin, onLogout, appData, onImportData }) => {
+export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate, currentUser, onLogin, onPhoneLogin, onLogout, appData, onImportData, lastSyncedTime }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   
@@ -728,6 +729,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
       }
       // Do not call onLogin() here because onLogin maps to signInWithGoogle.
       // onAuthStateChange in App.tsx will automatically pick up the login state change.
+      onClose();
     } catch (error: any) {
       console.error(error);
       setEmailError(error.message || `Error ${isSignUpMode ? 'signing up' : 'signing in'} with Email/Password`);
@@ -796,6 +798,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                               {/* Hidden Firebase Cloud Active indicator per user request */}
                               <p className="text-xs text-slate-500 leading-relaxed mb-4">
                                 Your data is successfully synchronizing live!
+                                {lastSyncedTime && (
+                                  <span className="block mt-1 text-[9px] text-slate-400 font-medium">
+                                    Last synced: {new Date(lastSyncedTime).toLocaleTimeString()}
+                                  </span>
+                                )}
                               </p>
                               <button 
                                 onClick={onLogout}
@@ -869,7 +876,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                            // @ts-ignore
                                            const { error } = await authS.auth.resetPassword(email);
                                            if (error) throw error;
-                                           alert("Password reset email sent! Please check your inbox.");
+                                           alert("Password reset email sent! Please check your inbox and SPAM folder.\n\nNote: If you don't receive an email, it might be because this account doesn't exist in our new Firebase system yet. Please try signing up again if you were previously a Supabase user.");
                                          } catch (e: any) {
                                            setEmailError(e.message);
                                          } finally {

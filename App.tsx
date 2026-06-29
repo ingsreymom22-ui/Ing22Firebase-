@@ -253,9 +253,12 @@ const App: React.FC = () => {
       }
       
       hasUnsavedChangesRef.current = true;
+      const now = Date.now();
+      // Ensure updatedAt is always strictly increasing even if client clocks are slightly off
+      const nextUpdatedAt = Math.max(now, (prev.updatedAt || 0) + 1);
       return {
         ...next,
-        updatedAt: Date.now(),
+        updatedAt: nextUpdatedAt,
       };
     });
   };
@@ -264,6 +267,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<AppData[]>([]);
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
   const [showSyncToast, setShowSyncToast] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     try {
@@ -354,7 +358,9 @@ const App: React.FC = () => {
         
         try {
           await saveData(currentUser.uid!, dataToSave, true);
-          lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || Date.now();
+          const now = Date.now();
+          lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || now;
+          setLastSyncedTime(now);
           previousDataSyncRef.current = dataStr;
           lastScheduledDataStrRef.current = dataStr;
           
@@ -742,6 +748,7 @@ const App: React.FC = () => {
         previousDataSyncRef.current = finalStr;
         lastScheduledDataStrRef.current = finalStr;
         lastSyncedUpdatedAtRef.current = newData.updatedAt || 0;
+        setLastSyncedTime(Date.now());
         setInternalData(newData);
         storage.setItem("dps_data", JSON.stringify(newData)); // SYNC to storage
         setLoading(false);
@@ -1235,6 +1242,7 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           appData={data}
           onImportData={(importedData) => handleUpdate(importedData)}
+          lastSyncedTime={lastSyncedTime}
         />
 
         <SupermanAnimation students={data.students} />
