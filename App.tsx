@@ -241,7 +241,13 @@ const App: React.FC = () => {
   const setData = (action: React.SetStateAction<AppData>) => {
     lastLocalUpdateRef.current = Date.now();
     hasUnsavedChangesRef.current = true;
-    setInternalData(action);
+    setInternalData((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      return {
+        ...next,
+        updatedAt: Date.now(),
+      };
+    });
   };
 
 
@@ -651,6 +657,10 @@ const App: React.FC = () => {
         // 3. Conflict Prevention: Only apply conflict resolution if this is not the initial session load.
         // On initial login or startup, always trust the database source of truth.
         if (!isFirstLoad) {
+          // If we have a local updatedAt timestamp, and the incoming one is older or equal, ignore it.
+          if (currentDataRef.current?.updatedAt && newData?.updatedAt && newData.updatedAt <= currentDataRef.current.updatedAt) {
+            return;
+          }
           // If we are currently making a network save, wait for our own echo to bounce back
           // instead of applying it now (which could revert rapid subsequent local keystrokes).
           if (isSyncingRef.current || hasUnsavedChangesRef.current) {

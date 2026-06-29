@@ -198,6 +198,7 @@ export interface AppData {
   dailyPerformanceCompletions?: Record<string, Record<string, boolean>>; // Key: YYYY-MM-DD, value is { [taskId]: boolean }
   tomorrowTasks?: { id: string; name: string; completed: boolean }[];
   templates?: Template[];
+  updatedAt?: number;
 }
 
 export interface Template {
