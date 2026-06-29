@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy, deleteDoc, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy, deleteDoc, writeBatch, limit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject, uploadBytes } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,7 +17,20 @@ let lastSyncStatus = false;
 let isSyncingQueue = false;
 
 export const checkSupabaseConnection = async () => {
-    return typeof window !== 'undefined' && window.navigator.onLine;
+    if (typeof window === 'undefined') return false;
+    if (!window.navigator.onLine) return false;
+    
+    try {
+        // Try a tiny ping to check if Firebase is actually reachable
+        const q = query(collection(db, 'dps_data'), where('folderId', '==', 'ping'), limit(1));
+        await Promise.race([
+            getDocs(q),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
+        ]);
+        return true;
+    } catch (e) {
+        return false;
+    }
 };
 
 // Mock Supabase Auth object to keep App.tsx working seamlessly
@@ -123,6 +136,8 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   let isInitial = true;
   
   const unsubscribe = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
+    if (docSnap.metadata.hasPendingWrites) return;
+    
     if (docSnap.exists()) {
       const payload = docSnap.data();
       if (payload.isChunked && payload.numChunks > 0) {

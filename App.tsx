@@ -226,6 +226,7 @@ const App: React.FC = () => {
         dateTextColor: '#f97316'
       },
       attendance: {},
+      updatedAt: Date.now(),
     };
   });
   
@@ -330,13 +331,16 @@ const App: React.FC = () => {
     if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
       const dataStr = JSON.stringify(data);
       if (dataStr === lastScheduledDataStrRef.current) return;
-      lastScheduledDataStrRef.current = dataStr;
-
-      setIsSyncing(true);
-      isSyncingRef.current = true;
+      
       const timer = setTimeout(async () => {
+        // Double check after debounce
+        if (JSON.stringify(currentDataRef.current) === lastScheduledDataStrRef.current) return;
+        
+        lastScheduledDataStrRef.current = dataStr;
+        setIsSyncing(true);
+        isSyncingRef.current = true;
+        
         try {
-          const { saveData } = await import("./services/supabase");
           // Instant saves the snapshot of the data state directly without extra debouncing
           await saveData(currentUser.uid!, data, true);
           previousDataSyncRef.current = dataStr;
@@ -345,14 +349,13 @@ const App: React.FC = () => {
           if (JSON.stringify(currentDataRef.current) === dataStr) {
             hasUnsavedChangesRef.current = false;
           }
-          setIsSyncing(false);
-          isSyncingRef.current = false;
         } catch (err) {
           console.error("Auto Sync Error:", err);
+        } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
         }
-      }, 400); // 400ms debounce
+      }, 1000); // Increased debounce to 1s to be less aggressive and prevent "always blue" during active typing
       return () => clearTimeout(timer);
     }
   }, [data, currentUser, loading]);
@@ -657,15 +660,21 @@ const App: React.FC = () => {
         // 3. Conflict Prevention: Only apply conflict resolution if this is not the initial session load.
         // On initial login or startup, always trust the database source of truth.
         if (!isFirstLoad) {
-          // If we have a local updatedAt timestamp, and the incoming one is older or equal, ignore it.
-          if (currentDataRef.current?.updatedAt && newData?.updatedAt && newData.updatedAt <= currentDataRef.current.updatedAt) {
-            return;
-          }
           // If we are currently making a network save, wait for our own echo to bounce back
           // instead of applying it now (which could revert rapid subsequent local keystrokes).
           if (isSyncingRef.current || hasUnsavedChangesRef.current) {
-             const wasRecentlyUpdated = Date.now() - lastLocalUpdateRef.current < 2000;
-             if (wasRecentlyUpdated) return;
+             const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+             // If we updated locally very recently (within 5 seconds), trust local state over server
+             if (timeSinceLastUpdate < 5000) return;
+          }
+
+          // If we have a local updatedAt timestamp, and the incoming one is older or missing, ignore it.
+          // This is the primary defense against disappearing data.
+          const currentUpdatedAt = currentDataRef.current?.updatedAt || 0;
+          const incomingUpdatedAt = newData?.updatedAt || 0;
+          
+          if (incomingUpdatedAt < currentUpdatedAt) {
+            return;
           }
         }
 
