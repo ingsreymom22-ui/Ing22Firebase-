@@ -708,23 +708,23 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
         throw new Error("Firebase is not configured yet!");
       }
       if (isSignUpMode) {
-        const { data, error } = await authService.auth.signUp({ email, password });
-        if (error) throw error;
-        
-        if (data?.user && data.user.identities && data.user.identities.length === 0) {
-          throw new Error("This email is already registered. Please sign in instead.");
+        const { error } = await authService.auth.signUp({ email, password });
+        if (error) {
+          if (error.code === 'auth/email-already-in-use') {
+            throw new Error("This email is already registered. Please sign in instead.");
+          }
+          throw error;
         }
         
-        if (data?.session === null) {
-          alert("Success! A confirmation link has been sent to your email. Please check your inbox and verify your account to log in.");
-          setIsSignUpMode(false);
-          setPassword('');
-        } else {
-          // alert("Signed up successfully!");
-        }
+        // Firebase automatically signs in after sign up by default
       } else {
         const { error } = await authService.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            throw new Error("Invalid email or password. Please check your credentials or sign up if you don't have an account.");
+          }
+          throw error;
+        }
       }
       // Do not call onLogin() here because onLogin maps to signInWithGoogle.
       // onAuthStateChange in App.tsx will automatically pick up the login state change.
@@ -815,6 +815,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                             <p className="text-sm font-black text-slate-800 mb-1">Local Mode</p>
                             <p className="text-xs text-slate-500 leading-relaxed mb-4">
                               Your data is only stored in this browser. Please sign in to sync.
+                              <br />
+                              <span className="text-[10px] text-orange-600 font-bold italic block mt-1">Note: We recently switched to Firebase. Please Sign Up again if you haven't yet on this new version.</span>
                             </p>
                             {emailError && (
                               <div className="mb-4 bg-red-50 text-red-650 border border-red-200 p-4 rounded-xl text-xs font-semibold text-left leading-relaxed shadow-sm">
@@ -854,6 +856,31 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                      )}
                                      {isSignUpMode ? 'Sign Up' : 'Sign In'} with Email
                                    </button>
+                                   {!isSignUpMode && (
+                                     <button
+                                       onClick={async () => {
+                                         if (!email) {
+                                           setEmailError("Please enter your email first to reset password.");
+                                           return;
+                                         }
+                                         setIsEmailLoading(true);
+                                         try {
+                                           const { authService: authS } = await import('../services/firebase');
+                                           // @ts-ignore
+                                           const { error } = await authS.auth.resetPassword(email);
+                                           if (error) throw error;
+                                           alert("Password reset email sent! Please check your inbox.");
+                                         } catch (e: any) {
+                                           setEmailError(e.message);
+                                         } finally {
+                                           setIsEmailLoading(false);
+                                         }
+                                       }}
+                                       className="text-[10px] text-slate-400 hover:text-slate-600 font-bold block w-full text-center mt-1"
+                                     >
+                                       Forgot Password?
+                                     </button>
+                                   )}
                                    
                                    <div className="text-center pb-2">
                                       <button

@@ -97,6 +97,15 @@ export const authService = {
     },
     signOut: async () => {
       await firebaseSignOut(auth);
+    },
+    resetPassword: async (email: string) => {
+      try {
+        const { sendPasswordResetEmail } = await import('firebase/auth');
+        await sendPasswordResetEmail(auth, email);
+        return { error: null };
+      } catch (e: any) {
+        return { error: e };
+      }
     }
   },
   storage: {
