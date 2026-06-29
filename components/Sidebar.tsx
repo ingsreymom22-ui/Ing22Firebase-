@@ -200,15 +200,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="overflow-hidden flex-1 flex flex-col justify-center">
                   <p className="text-[11px] font-black text-slate-900 dark:text-slate-200 truncate tracking-tight leading-tight">{currentUser?.name}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-bounce' : isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-bounce' : isOnline && currentUser?.uid ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                     <span 
-                      className={`text-[8px] font-black leading-none uppercase ${isSyncing ? 'text-blue-600' : isOnline ? 'text-emerald-600' : 'text-amber-600/90'}`} 
-                      title={isSyncing ? "Syncing..." : isOnline ? "Online" : "Offline"}
+                      className={`text-[8px] font-black leading-none uppercase ${isSyncing ? 'text-blue-600' : isOnline && currentUser?.uid ? 'text-emerald-600' : 'text-amber-600/90'}`} 
+                      title={isSyncing ? "Syncing..." : isOnline && currentUser?.uid ? "Online" : "Local / Offline"}
                     >
-                      {isSyncing ? 'Sync' : isOnline ? 'Online' : 'Offline'}
+                      {isSyncing ? 'Sync' : isOnline && currentUser?.uid ? 'Online' : 'Local'}
                     </span>
                   </div>
                 </div>
+                {(!currentUser?.uid) && (
+                  <button 
+                    onClick={onSettingsOpen}
+                    className="ml-2 px-2 py-1 bg-orange-500 text-white text-[9px] font-black rounded-lg hover:bg-orange-600 transition-all uppercase animate-pulse shadow-lg shadow-orange-500/20"
+                  >
+                    Login
+                  </button>
+                )}
                 <div className="flex flex-col items-center gap-0.5 shrink-0 ml-1">
                   <button onClick={() => setGlobalScale(Math.min(1.4, globalScale + 0.05))} className="w-5 h-5 flex items-center justify-center rounded-t border-b border-orange-500/10 bg-orange-500/10 hover:bg-orange-500 hover:text-white text-orange-600 font-bold transition-colors leading-none" title="Bigger UI">＋</button>
                   <button onClick={() => setGlobalScale(Math.max(0.6, globalScale - 0.05))} className="w-5 h-5 flex items-center justify-center rounded-b bg-orange-500/10 hover:bg-orange-500 hover:text-white text-orange-600 font-bold transition-colors leading-none" title="Smaller UI">－</button>

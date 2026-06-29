@@ -11,6 +11,7 @@ interface DailyJournalProps {
   data: AppData;
   onUpdate: (newData: AppData) => void;
   onUpdateJournalEntry?: (date: string, entry: JournalEntry) => void;
+  currentUser?: any;
 }
 
 interface JournalBlockProps {
@@ -31,7 +32,7 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
   </motion.div>
 );
 
- export const DailyJournal: React.FC<DailyJournalProps> = ({ data, onUpdate, onUpdateJournalEntry }) => {
+ export const DailyJournal: React.FC<DailyJournalProps> = ({ data, onUpdate, onUpdateJournalEntry, currentUser }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [reflectionMode, setReflectionMode] = useState<'Daily' | 'Weekly' | 'Monthly' | '3Month' | 'Calendar'>('Daily');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -57,9 +58,10 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
     try {
       const { createSharedNote } = await import('../services/supabase');
       const storedUser = localStorage.getItem('dps_user');
-      let userName = 'Chanthy';
-      let userId = 'unknown';
-      if (storedUser) {
+      let userName = currentUser?.name || 'Chanthy';
+      let userId = currentUser?.uid || 'unknown';
+      
+      if (!currentUser && storedUser) {
         try {
           const u = JSON.parse(storedUser);
           userName = u.name || 'Chanthy';
@@ -79,7 +81,11 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error(error);
-      alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
+      if (error.message?.includes("AUTHENTICATION_REQUIRED")) {
+        alert("Cloud sharing requires an account. Please sign in via System Control/Settings to generate public links.");
+      } else {
+        alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
+      }
     } finally {
       setIsSharingJournal(false);
     }

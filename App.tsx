@@ -1348,6 +1348,7 @@ const App: React.FC = () => {
                   data={data}
                   onUpdate={handleUpdate}
                   onUpdateJournalEntry={handleUpdateJournalEntry}
+                  currentUser={currentUser}
                 />
               )}
               {activeTab === Tab.DailyPerformanceCheck && (
@@ -1388,6 +1389,7 @@ const App: React.FC = () => {
                 <DPSSTable
                   data={data}
                   onUpdate={handleUpdate}
+                  currentUser={currentUser}
                   onUpdateTopic={(topics, topic) => {
                     if (topic && (topic as any).deletedAt) {
                       // Marking as deleted (recycle bin)
@@ -1406,6 +1408,7 @@ const App: React.FC = () => {
                 <SelfLearningTable
                   data={data}
                   onUpdate={handleUpdate}
+                  currentUser={currentUser}
                   onUpdateTopic={(topics, topic) => {
                     if (topic && (topic as any).deletedAt) {
                       handleUpdateTopic(topics, topic, "selfLearning");

@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "AppData": {
+      "title": "Application Data",
+      "description": "Full application state for sync and backup",
+      "type": "object",
+      "properties": {
+        "students": { "type": "array" },
+        "dailyPerformanceTasks": { "type": "array" },
+        "dailyPerformanceCompletions": { "type": "object" },
+        "journalEntries": { "type": "object" },
+        "expenses": { "type": "array" },
+        "dpssTopics": { "type": "array" },
+        "selfLearningTopics": { "type": "array" },
+        "habitTrackerConfig": { "type": "object" },
+        "settings": { "type": "object" }
+      }
+    },
+    "SharedNote": {
+      "title": "Shared Note",
+      "description": "A shared note or topic accessible via public link",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "owner_id": { "type": "string" },
+        "owner_name": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "owner_id", "type", "title", "created_at"]
+    }
+  },
+  "firestore": {
+    "/dps_data/{userId}": {
+      "schema": "AppData",
+      "description": "User specific application data"
+    },
+    "/dps_shares/{shareId}": {
+      "schema": "SharedNote",
+      "description": "Publicly shared notes"
+    },
+    "/dps_backups/{backupId}": {
+      "schema": "AppData",
+      "description": "Historical backups of user data"
+    }
+  }
+}

@@ -134,9 +134,10 @@ interface SelfLearningTableProps {
   onUpdate: (data: AppData | ((prev: AppData) => AppData)) => void;
   onUpdateTopic?: (updatedTopics: DPSSTopic[], topicToSave?: DPSSTopic) => void;
   onOpenSidebar?: () => void;
+  currentUser?: any;
 }
 
-export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUpdate, onUpdateTopic, onOpenSidebar }) => {
+export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUpdate, onUpdateTopic, onOpenSidebar, currentUser }) => {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [isTableResizeLocked, setIsTableResizeLocked] = useState(true);
   const [gridOpacity, setGridOpacity] = useState(100);
@@ -4902,9 +4903,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     setGeneratedShareLink(null);
 
     const storedUser = localStorage.getItem('dps_user');
-    let userName = 'Chanthy';
-    let userId = 'unknown';
-    if (storedUser) {
+    let userName = currentUser?.name || 'Chanthy';
+    let userId = currentUser?.uid || 'unknown';
+    
+    if (!currentUser && storedUser) {
       try {
         const u = JSON.parse(storedUser);
         userName = u.name || 'Chanthy';
@@ -4919,7 +4921,11 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error("Firebase sharing failed:", error);
-      setCloudShareError(`Failed to create cloud link. Error: ${error.message || String(error)}.`);
+      if (error.message?.includes("AUTHENTICATION_REQUIRED")) {
+        setCloudShareError("Cloud sharing requires an account. Please sign in via System Control/Settings to generate public links.");
+      } else {
+        setCloudShareError(`Failed to create cloud link. Error: ${error.message || String(error)}.`);
+      }
     } finally {
       setIsCloudShareLoading(false);
     }

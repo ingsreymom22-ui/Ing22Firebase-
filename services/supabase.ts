@@ -117,7 +117,7 @@ export const logOut = async () => {
 };
 
 // Architecture constants
-const MAX_FIRESTORE_SIZE = 500000; // ~500KB chunk size to be safe for 1MB Firestore limit
+const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
 export const subscribeToData = (userId: string, onUpdate: (data: any) => void, onError?: () => void) => {
   let isInitial = true;
@@ -345,19 +345,149 @@ export const deleteFile = async (path: string) => {
   }
 };
 
-export const saveTopic = async (...args: any[]) => {};
-export const deleteStudent = async (...args: any[]) => {};
-export const saveStudent = async (...args: any[]) => {};
-export const deleteTopic = async (...args: any[]) => {};
-export const saveTopicsBulk = async (...args: any[]) => {};
-export const saveAttendance = async (...args: any[]) => {};
-export const saveDailyNote = async (...args: any[]) => {};
-export const saveHabitCompletionBulk = async (...args: any[]) => {};
-export const saveHabitList = async (...args: any[]) => {};
-export const deleteHabit = async (...args: any[]) => {};
-export const saveHabitCompletion = async (...args: any[]) => {};
-export const saveJournalEntry = async (...args: any[]) => {};
-export const saveExpense = async (...args: any[]) => {};
+export const saveTopic = async (topic: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_topics', topic.id), {
+      ...topic,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `dps_topics/${topic.id}`);
+  }
+};
+
+export const deleteStudent = async (studentId: string) => {
+  if (!auth.currentUser) return;
+  try {
+    await deleteDoc(doc(db, 'dps_students', studentId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `dps_students/${studentId}`);
+  }
+};
+
+export const saveStudent = async (student: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_students', student.id), {
+      ...student,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `dps_students/${student.id}`);
+  }
+};
+
+export const deleteTopic = async (topicId: string) => {
+  if (!auth.currentUser) return;
+  try {
+    await deleteDoc(doc(db, 'dps_topics', topicId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `dps_topics/${topicId}`);
+  }
+};
+
+export const saveAttendance = async (attendance: any) => {
+  if (!auth.currentUser) return;
+  try {
+    const id = `${attendance.studentId}_${attendance.date}`;
+    await setDoc(doc(db, 'dps_attendance', id), {
+      ...attendance,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_attendance');
+  }
+};
+
+export const saveDailyNote = async (note: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_daily_notes', note.id), {
+      ...note,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_daily_notes');
+  }
+};
+
+export const saveJournalEntry = async (date: string, entry: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_journals', date), {
+      ...entry,
+      date,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_journals');
+  }
+};
+
+export const saveExpense = async (expense: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_expenses', expense.id), {
+      ...expense,
+      owner_id: auth.currentUser.uid,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_expenses');
+  }
+};
+
+export const saveTopicsBulk = async (topics: any[]) => {
+  if (!auth.currentUser) return;
+  try {
+    const batch = writeBatch(db);
+    topics.forEach(t => {
+      const d = doc(db, 'dps_topics', t.id);
+      batch.set(d, { ...t, owner_id: auth.currentUser!.uid, updated_at: new Date().toISOString() });
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_topics_bulk');
+  }
+};
+
+export const saveHabitCompletionBulk = async (completions: any) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_habit_completions', auth.currentUser.uid), {
+      completions,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_habit_completions');
+  }
+};
+
+export const saveHabitList = async (habits: any[]) => {
+  if (!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'dps_habit_list', auth.currentUser.uid), {
+      habits,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'dps_habit_list');
+  }
+};
+
+export const deleteHabit = async (habitId: string) => {
+  // Usually handled by saveHabitList since it's a full list update
+};
+
+export const saveHabitCompletion = async (habitId: string, date: string, completed: boolean) => {
+  // Usually handled by saveHabitCompletionBulk
+};
 
 export const getSharedNote = async (shareId: string) => {
   try {
@@ -382,7 +512,50 @@ export const getSharedNote = async (shareId: string) => {
   }
 };
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 export const createSharedNote = async (userId: string, ownerName: string, type: string, title: string, payload: any) => {
+  if (!auth.currentUser) {
+    throw new Error("AUTHENTICATION_REQUIRED: You must be signed in to create cloud links.");
+  }
+  
+  if (userId === 'unknown' || !userId) {
+    userId = auth.currentUser.uid;
+  }
+
   const id = Math.random().toString(36).substring(2, 12);
   const payloadStr = JSON.stringify(payload);
   const size = payloadStr.length;
@@ -396,21 +569,25 @@ export const createSharedNote = async (userId: string, ownerName: string, type: 
     created_at: new Date().toISOString()
   };
 
-  if (size > MAX_FIRESTORE_SIZE) {
-    const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-    for (let i = 0; i < numChunks; i++) {
-       const chunkStr = payloadStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-       await setDoc(doc(db, `dps_shares/${id}/chunks`, i.toString()), { data: chunkStr });
+  try {
+    if (size > MAX_FIRESTORE_SIZE) {
+      const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+      for (let i = 0; i < numChunks; i++) {
+         const chunkStr = payloadStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+         await setDoc(doc(db, `dps_shares/${id}/chunks`, i.toString()), { data: chunkStr });
+      }
+      shareDoc.isChunked = true;
+      shareDoc.numChunks = numChunks;
+    } else {
+      shareDoc.payload = payload;
+      shareDoc.isChunked = false;
     }
-    shareDoc.isChunked = true;
-    shareDoc.numChunks = numChunks;
-  } else {
-    shareDoc.payload = payload;
-    shareDoc.isChunked = false;
-  }
 
-  await setDoc(doc(db, 'dps_shares', id), shareDoc);
-  return id;
+    await setDoc(doc(db, 'dps_shares', id), shareDoc);
+    return id;
+  } catch (error) {
+    return handleFirestoreError(error, OperationType.WRITE, `dps_shares/${id}`);
+  }
 };
 
 export const getCloudBackups = async (userId: string) => {

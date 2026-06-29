@@ -1,25 +1,46 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128; }
+    function incoming() { return request.resource.data; }
+    
+    // --- DEFAULT DENY ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User Data Sync
     match /dps_data/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
+      
       match /chunks/{chunkId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
       }
     }
+
+    // Public Sharing
     match /dps_shares/{shareId} {
       allow read: if true;
-      allow write: if request.auth != null && request.resource.data.owner_id == request.auth.uid;
+      allow create: if isSignedIn() && incoming().owner_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.owner_id == request.auth.uid;
+      
       match /chunks/{chunkId} {
         allow read: if true;
-        allow write: if request.auth != null;
+        allow write: if isSignedIn();
       }
     }
+
+    // Backups
     match /dps_backups/{backupId} {
-      allow read, write: if request.auth != null && resource.data.owner_id == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.owner_id == request.auth.uid;
+      allow create: if isSignedIn() && incoming().owner_id == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && resource.data.owner_id == request.auth.uid;
+      
       match /chunks/{chunkId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isSignedIn();
       }
     }
   }
