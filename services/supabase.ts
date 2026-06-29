@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy, deleteDoc, writeBatch } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject, uploadBytes } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -220,7 +220,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
 
         payload = {
            folderId: userId,
-           updatedAt: new Date().getTime(),
+           updatedAt: latestDataState.updatedAt || new Date().getTime(),
            version: latestDataState.version || 1,
            numChunks: numChunks,
            isChunked: true
@@ -229,7 +229,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
         // Store normally in Firestore but AS A STRING to preserve key order
         payload = {
            folderId: userId,
-           updatedAt: new Date().getTime(),
+           updatedAt: latestDataState.updatedAt || new Date().getTime(),
            version: latestDataState.version || 1,
            dataStr: dataStr,
            isChunked: false
@@ -243,7 +243,6 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       ]);
       
       lastSyncStatus = true;
-      console.log("Firebase sync successful at", new Date().toLocaleTimeString());
     } catch (error) {
       console.error("Firebase exception during save:", error);
       await localIndexedDB.queueSync(userId, latestDataState);
@@ -254,8 +253,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
   if (instant) {
     await performSave();
   } else {
-    // Implement 4-second debounce as requested
-    saveTimeout = setTimeout(performSave, 4000);
+    saveTimeout = setTimeout(performSave, 1000);
   }
 };
 
@@ -345,20 +343,20 @@ export const deleteFile = async (path: string) => {
   }
 };
 
-export const saveTopic = async (topic: any) => {
+export const saveTopic = async (userId: string, topic: any) => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_topics', topic.id), {
       ...topic,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `dps_topics/${topic.id}`);
   }
 };
 
-export const deleteStudent = async (studentId: string) => {
+export const deleteStudent = async (userId: string, studentId: string) => {
   if (!auth.currentUser) return;
   try {
     await deleteDoc(doc(db, 'dps_students', studentId));
@@ -367,20 +365,20 @@ export const deleteStudent = async (studentId: string) => {
   }
 };
 
-export const saveStudent = async (student: any) => {
+export const saveStudent = async (userId: string, student: any) => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_students', student.id), {
       ...student,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `dps_students/${student.id}`);
   }
 };
 
-export const deleteTopic = async (topicId: string) => {
+export const deleteTopic = async (userId: string, topicId: string) => {
   if (!auth.currentUser) return;
   try {
     await deleteDoc(doc(db, 'dps_topics', topicId));
@@ -389,7 +387,7 @@ export const deleteTopic = async (topicId: string) => {
   }
 };
 
-export const saveAttendance = async (attendance: any) => {
+export const saveAttendance = async (userId: string, attendance: any) => {
   if (!auth.currentUser) return;
   try {
     const id = `${attendance.studentId}_${attendance.date}`;
@@ -397,95 +395,118 @@ export const saveAttendance = async (attendance: any) => {
       ...attendance,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_attendance');
   }
 };
 
-export const saveDailyNote = async (note: any) => {
+export const saveDailyNote = async (userId: string, date: string, content: any) => {
   if (!auth.currentUser) return;
   try {
-    await setDoc(doc(db, 'dps_daily_notes', note.id), {
-      ...note,
+    const id = `${userId}_${date}`;
+    await setDoc(doc(db, 'dps_daily_notes', id), {
+      content,
+      date,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_daily_notes');
   }
 };
 
-export const saveJournalEntry = async (date: string, entry: any) => {
+export const saveJournalEntry = async (userId: string, date: string, entry: any) => {
   if (!auth.currentUser) return;
   try {
-    await setDoc(doc(db, 'dps_journals', date), {
+    const id = `${userId}_${date}`;
+    await setDoc(doc(db, 'dps_journals', id), {
       ...entry,
       date,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_journals');
   }
 };
 
-export const saveExpense = async (expense: any) => {
+export const saveExpense = async (userId: string, expense: any) => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_expenses', expense.id), {
       ...expense,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_expenses');
   }
 };
 
-export const saveTopicsBulk = async (topics: any[]) => {
+export const saveTopicsBulk = async (userId: string, topicsToSave: { topic: any, category: string }[], topicIdsToDelete: { id: string, category: string }[]) => {
   if (!auth.currentUser) return;
   try {
     const batch = writeBatch(db);
-    topics.forEach(t => {
-      const d = doc(db, 'dps_topics', t.id);
-      batch.set(d, { ...t, owner_id: auth.currentUser!.uid, updated_at: new Date().toISOString() });
+    
+    // In this app, topics are stored in a dedicated collection 'dps_topics'
+    // but also synchronized as part of the full state. 
+    // We update the individual docs for real-time collaboration/sharing if needed.
+    
+    topicsToSave.forEach(({ topic, category }) => {
+      const d = doc(db, 'dps_topics', topic.id);
+      batch.set(d, { 
+        ...topic, 
+        category,
+        owner_id: auth.currentUser!.uid, 
+        updated_at: new Date().toISOString() 
+      }, { merge: true });
     });
+
+    topicIdsToDelete.forEach(({ id }) => {
+      const d = doc(db, 'dps_topics', id);
+      batch.delete(d);
+    });
+
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_topics_bulk');
   }
 };
 
-export const saveHabitCompletionBulk = async (completions: any) => {
+export const saveHabitCompletionBulk = async (userId: string, date: string, completions: any) => {
   if (!auth.currentUser) return;
   try {
-    await setDoc(doc(db, 'dps_habit_completions', auth.currentUser.uid), {
+    const id = `${userId}_habit_completions_${date}`;
+    await setDoc(doc(db, 'dps_habit_completions', id), {
       completions,
+      date,
+      owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_habit_completions');
   }
 };
 
-export const saveHabitList = async (habits: any[]) => {
+export const saveHabitList = async (userId: string, habits: any[]) => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_habit_list', auth.currentUser.uid), {
       habits,
+      owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_habit_list');
   }
 };
 
-export const deleteHabit = async (habitId: string) => {
+export const deleteHabit = async (userId: string, habitId: string) => {
   // Usually handled by saveHabitList since it's a full list update
 };
 
-export const saveHabitCompletion = async (habitId: string, date: string, completed: boolean) => {
+export const saveHabitCompletion = async (userId: string, habitId: string, date: string, completed: boolean) => {
   // Usually handled by saveHabitCompletionBulk
 };
 
