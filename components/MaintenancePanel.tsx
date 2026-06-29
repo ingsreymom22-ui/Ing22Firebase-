@@ -127,10 +127,24 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
     });
   };
 
-  const handleRestore = (backup: BackupEntry) => {
+  const handleRestore = async (backup: any) => {
     if (confirm(`CRITICAL WARNING: You are about to restore data from ${format(new Date(backup.timestamp), 'PPPP p')}. This will delete all changes made after that time. Are you sure?`)) {
-       onUpdate({ ...backup.data, systemLocked: false });
-       alert("System Restored Successfully!");
+       try {
+         setLoading(true);
+         const { fetchBackupPayload } = await import('../services/supabase');
+         const fullData = await fetchBackupPayload(backup);
+         if (fullData) {
+           onUpdate({ ...fullData, systemLocked: false });
+           alert("System Restored Successfully!");
+         } else {
+           alert("Failed to restore: Backup data is corrupted or missing.");
+         }
+       } catch (err) {
+         console.error("Restore failed", err);
+         alert("Restore failed. Please check your connection.");
+       } finally {
+         setLoading(false);
+       }
     }
   };
 

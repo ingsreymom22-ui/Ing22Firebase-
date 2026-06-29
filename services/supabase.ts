@@ -2,6 +2,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject, uploadBytes } from 'firebase/storage';
+import { v4 as uuidv4 } from 'uuid';
 import { storage as localIndexedDB } from './storage';
 import config from '../firebase-applet-config.json';
 
@@ -273,19 +274,21 @@ export const processSyncQueue = async () => {
   for (const item of queue) {
     try {
       const dataStr = JSON.stringify(item.data);
-      const size = new Blob([dataStr]).size;
+      const size = dataStr.length;
       
-      let payload = {};
+      let payload: any = {};
       if (size > MAX_FIRESTORE_SIZE) {
-        // Queue chunking isn't fully implemented here for brevity, 
-        // fallback to normal store for queue but log warning
-        console.warn("Queue item too large, chunking not implemented in queue sync.");
+        const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+        for (let i = 0; i < numChunks; i++) {
+           const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+           await setDoc(doc(db, `dps_data/${item.userId}/chunks`, i.toString()), { data: chunkStr });
+        }
         payload = {
            folderId: item.userId,
            updatedAt: item.timestamp,
            version: item.data.version || 1,
-           dataStr: dataStr,
-           isChunked: false
+           numChunks: numChunks,
+           isChunked: true
         };
       } else {
         payload = {
@@ -300,6 +303,7 @@ export const processSyncQueue = async () => {
       await setDoc(doc(db, 'dps_data', item.userId), payload);
       idsToRemove.push(item.id);
     } catch (e) {
+      console.error("Error processing sync queue item:", e);
       break;
     }
   }
@@ -358,17 +362,54 @@ export const saveExpense = async (...args: any[]) => {};
 export const getSharedNote = async (shareId: string) => {
   try {
     const docSnap = await getDoc(doc(db, 'dps_shares', shareId));
-    return docSnap.exists() ? docSnap.data() : null;
+    if (!docSnap.exists()) return null;
+    
+    const payload = docSnap.data();
+    if (payload.isChunked && payload.numChunks > 0) {
+      let fullString = '';
+      for (let i = 0; i < payload.numChunks; i++) {
+        const chunkSnap = await getDoc(doc(db, `dps_shares/${shareId}/chunks`, i.toString()));
+        if (chunkSnap.exists()) {
+          fullString += chunkSnap.data().data;
+        }
+      }
+      return { ...payload, payload: JSON.parse(fullString) };
+    }
+    return payload;
   } catch (error) { 
+      console.error("Error fetching shared note:", error);
       return null; 
   }
 };
 
 export const createSharedNote = async (userId: string, ownerName: string, type: string, title: string, payload: any) => {
   const id = Math.random().toString(36).substring(2, 12);
-  await setDoc(doc(db, 'dps_shares', id), {
-    id, owner_id: userId, owner_name: ownerName, type, title, payload, created_at: new Date().toISOString()
-  });
+  const payloadStr = JSON.stringify(payload);
+  const size = payloadStr.length;
+  
+  let shareDoc: any = {
+    id, 
+    owner_id: userId, 
+    owner_name: ownerName, 
+    type, 
+    title, 
+    created_at: new Date().toISOString()
+  };
+
+  if (size > MAX_FIRESTORE_SIZE) {
+    const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+    for (let i = 0; i < numChunks; i++) {
+       const chunkStr = payloadStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+       await setDoc(doc(db, `dps_shares/${id}/chunks`, i.toString()), { data: chunkStr });
+    }
+    shareDoc.isChunked = true;
+    shareDoc.numChunks = numChunks;
+  } else {
+    shareDoc.payload = payload;
+    shareDoc.isChunked = false;
+  }
+
+  await setDoc(doc(db, 'dps_shares', id), shareDoc);
   return id;
 };
 
@@ -386,22 +427,50 @@ export const createCloudBackup = async (userId: string, data: any) => {
   try {
     const dataStr = JSON.stringify(data);
     const size = dataStr.length;
-    let payloadData = data;
+    const backupId = uuidv4(); // We need a stable ID for chunks sub-collection
     
-    if (size > MAX_FIRESTORE_SIZE) {
-       console.warn("Backup item too large, storing as string directly. (Chunking for backups not implemented yet)");
-       payloadData = { __isStringified: true, dataStr: dataStr };
-    }
-    
-    await addDoc(collection(db, 'dps_backups'), {
+    let backupDoc: any = {
+      id: backupId,
       owner_id: userId,
-      data: payloadData,
       type: 'Manual',
       timestamp: new Date().toISOString()
-    });
+    };
+
+    if (size > MAX_FIRESTORE_SIZE) {
+       const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+       for (let i = 0; i < numChunks; i++) {
+          const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+          await setDoc(doc(db, `dps_backups/${backupId}/chunks`, i.toString()), { data: chunkStr });
+       }
+       backupDoc.isChunked = true;
+       backupDoc.numChunks = numChunks;
+    } else {
+       backupDoc.data = data;
+       backupDoc.isChunked = false;
+    }
+    
+    await setDoc(doc(db, 'dps_backups', backupId), backupDoc);
   } catch (err) {
     console.error("Backup failed", err);
     throw err;
+  }
+};
+
+export const fetchBackupPayload = async (backupDoc: any) => {
+  try {
+    if (!backupDoc.isChunked) return backupDoc.data;
+    
+    let fullString = '';
+    for (let i = 0; i < backupDoc.numChunks; i++) {
+      const chunkSnap = await getDoc(doc(db, `dps_backups/${backupDoc.id}/chunks`, i.toString()));
+      if (chunkSnap.exists()) {
+        fullString += chunkSnap.data().data;
+      }
+    }
+    return JSON.parse(fullString);
+  } catch (error) {
+    console.error("Error fetching backup payload:", error);
+    return null;
   }
 };
 
