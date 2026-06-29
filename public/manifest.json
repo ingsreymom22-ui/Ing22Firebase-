@@ -1,0 +1,23 @@
+{
+  "short_name": "Growth Portal",
+  "name": "Peak Performance Growth Portal",
+  "description": "Student Progress Tracker, Self-Learning Hub, Habit Builder & Personal Finances",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/?size=512&id=T4XFjOf8yBTh&format=png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/?size=192&id=T4XFjOf8yBTh&format=png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#ea580c",
+  "display": "standalone",
+  "orientation": "portrait"
+}

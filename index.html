@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>Peak Performance Growth Portal</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ea580c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="https://img.icons8.com/?size=192&id=T4XFjOf8yBTh&format=png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@300;400;500;700&family=Caveat:wght@400;500;600;700&family=Dancing+Script:wght@400;500;600;700&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              primary: {
+                50: '#fff7ed',
+                100: '#ffedd5',
+                200: '#fed7aa',
+                300: '#fdba74',
+                400: '#fb923c',
+                500: '#f97316', // Core Brand Color
+                600: '#ea580c',
+                700: '#c2410c',
+                800: '#9a3412',
+                900: '#7c2d12',
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      /* Custom Spin animation */
+      @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .animate-spin-slow {
+        animation: spin-slow 3s linear infinite;
+      }
+
+      /* Transitions */
+      .animate-in {
+        animation-duration: 0.3s;
+        animation-fill-mode: both;
+      }
+      .fade-in {
+        animation-name: fadeIn;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .slide-in-from-left-2 {
+        animation-name: slideInLeft2;
+      }
+      @keyframes slideInLeft2 {
+        from { transform: translateX(-0.5rem); }
+        to { transform: translateX(0); }
+      }
+
+      /* Custom Scrollbar for heavy tables - Green, Purple and Orange styled main scrollbar */
+      ::-webkit-scrollbar {
+        -webkit-appearance: none !important;
+        width: 10px !important;
+        height: 10px !important;
+        display: block !important;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.04) !important; 
+        border-radius: 9999px !important;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #22c55e 0%, #a855f7 50%, #f97316 100%) !important; 
+        border-radius: 9999px !important;
+        border: 2px solid transparent !important;
+        background-clip: padding-box !important;
+        min-height: 40px !important;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #15803d 0%, #7e22ce 50%, #c2410c 100%) !important; 
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        background-clip: padding-box !important;
+      }
+
+      /* Force vertical scrollbar track/thumb to always show up and down on all platforms, including mobile phones */
+      .custom-scrollbar,
+      .always-scrollbar {
+        overflow-y: scroll !important;
+        -webkit-overflow-scrolling: auto !important;
+      }
+
+      /* Hide scrollbar utility */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* A4 Simulated Page Layout */
+      .a4-container {
+        min-width: 8.27in !important; /* A4 Width */
+        margin: 0 auto;
+        position: relative;
+        background: white;
+        box-shadow: 0 0 40px rgba(0,0,0,0.1);
+      }
+      
+      @media (max-width: 8.5in) {
+        .mobile-a4-wrapper {
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch;
+          width: 100vw;
+          padding-bottom: 20px;
+        }
+      }
+
+      /* Markdown & ContentEditable Table Styles */
+      .markdown-body table, [contenteditable="true"] table {
+        border-collapse: collapse;
+        width: 100% !important;
+        min-width: 100%;
+        margin-bottom: 1.5rem;
+        background-color: transparent;
+        table-layout: auto;
+      }
+      .markdown-body th, .markdown-body td, [contenteditable="true"] th, [contenteditable="true"] td {
+        border: 1px solid #cbd5e1; /* visible border */
+        padding: 0.75rem 1rem;
+        text-align: left;
+        word-break: normal; /* Better for tables */
+        overflow-wrap: break-word;
+        min-width: 50px;
+        vertical-align: top;
+      }
+
+      /* Fix for excessive first column width */
+      .markdown-body th:nth-child(2), 
+      .markdown-body td:nth-child(2),
+      [contenteditable="true"] th:nth-child(2),
+      [contenteditable="true"] td:nth-child(2) {
+        width: auto !important;
+        min-width: 150px;
+        max-width: 350px !important;
+      }
+      
+      /* Compact / Smart Toggle Table Styles */
+      .markdown-body table.compact-table td, [contenteditable="true"] table.compact-table td {
+        padding: 0.4rem 0.6rem !important;
+        font-size: 0.9em;
+      }
+      
+      .smart-check-cell {
+        text-align: center !important;
+        cursor: pointer;
+        user-select: none;
+        font-weight: 800;
+        min-width: 52px !important;
+        width: 52px;
+        padding: 16px 8px !important; /* Made taller from top to bottom to stay focused */
+        font-size: 16px !important; /* Larger checkbox/cross markers */
+        transition: background-color 0.15s ease, transform 0.1s ease;
+      }
+      .smart-check-cell:hover {
+        background-color: rgba(16, 185, 129, 0.08) !important;
+      }
+      .smart-check-cell:active {
+        transform: scale(0.92);
+      }
+      
+      /* Prevent first column from becoming too large with maximum character-based width */
+      [contenteditable="true"] td:first-child, [contenteditable="true"] th:first-child,
+      .markdown-body td:first-child, .markdown-body th:first-child {
+        width: 12ch !important;
+        max-width: 15ch !important;
+        font-weight: 600;
+        background-color: rgba(248, 250, 252, 0.5);
+        text-align: center;
+        overflow-wrap: break-word !important;
+        word-break: break-all !important;
+      }
+      /* Set all other columns to auto-expand, preventing them from growing excessively during user input */
+      [contenteditable="true"] td:not(:first-child), [contenteditable="true"] th:not(:first-child),
+      .markdown-body td:not(:first-child), .markdown-body th:not(:first-child) {
+        width: auto !important;
+        max-width: none !important;
+      }
+
+      /* Table spacer click zones for placing cursor easily below tables */
+      .table-spacer-click-zone {
+        height: 16px;
+        margin-top: 4px;
+        margin-bottom: 12px;
+        width: 100%;
+        cursor: text;
+        background: transparent;
+        display: block;
+        user-select: none;
+        position: relative;
+        z-index: 10;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+      }
+      .table-spacer-click-zone:hover {
+        background: rgba(244, 63, 94, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.08);
+      }
+      .table-spacer-click-zone::after {
+        content: '+ Click to place cursor here';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #f43f5e;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        pointer-events: none;
+      }
+      .table-spacer-click-zone:hover::after {
+        opacity: 1;
+      }
+      .markdown-body th, [contenteditable="true"] th {
+        background-color: #f1f5f9;
+        font-weight: 800;
+        color: #1e293b;
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 0.8px;
+        white-space: nowrap;
+      }
+      .markdown-body tr:nth-child(even), [contenteditable="true"] tr:nth-child(even) {
+        background-color: rgba(248, 250, 252, 0.3);
+      }
+      .markdown-body strong, [contenteditable="true"] strong {
+        font-weight: bold;
+      }
+      .markdown-body p, [contenteditable="true"] p {
+        margin-bottom: 1rem;
+      }
+      .markdown-body a, [contenteditable="true"] a {
+        color: #2563eb;
+        text-decoration: underline;
+      }
+      
+      /* Animation for Superhero LTR */
+      @keyframes flyAcross {
+        0% { transform: translate(-100vw, 20vh) rotate(5deg) scale(0.5); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translate(100vw, -20vh) rotate(5deg) scale(1); opacity: 0; }
+      }
+      
+      /* Animation for Superhero RTL */
+      @keyframes flyAcrossRTL {
+        0% { transform: translate(100vw, 20vh) rotate(-5deg) scale(0.5) scaleX(-1); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translate(-100vw, -20vh) rotate(-5deg) scale(1) scaleX(-1); opacity: 0; }
+      }
+
+      .flying-hero-ltr {
+        animation: flyAcross 10s linear forwards;
+      }
+      
+      .flying-hero-rtl {
+        animation: flyAcrossRTL 10s linear forwards;
+      }
+
+      /* Paper Pattern Classes */
+      .paper-ruled {
+        background-color: #ffffff !important;
+        background-image: linear-gradient(#f1f5f9 2px, transparent 2px) !important;
+        background-size: 100% 2.25rem !important;
+        background-attachment: local !important;
+      }
+      
+      .paper-grid {
+        background-color: #ffffff !important;
+        background-image: 
+          linear-gradient(#f1f5f9 1px, transparent 1px) !important,
+          linear-gradient(90deg, #f1f5f9 1px, transparent 1px) !important;
+        background-size: 1.5rem 1.5rem !important;
+        background-attachment: local !important;
+      }
+      
+      .paper-dots {
+        background-color: #ffffff !important;
+        background-image: radial-gradient(#e2e8f0 2px, transparent 2px) !important;
+        background-size: 1.5rem 1.5rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-dots-sparse {
+        background-color: #ffffff !important;
+        background-image: radial-gradient(#e2e8f0 2px, transparent 2px) !important;
+        background-size: 3rem 3rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-dots-orange { background-color: #ffffff !important; background-image: radial-gradient(#fed7aa 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-orange { background-color: #ffffff !important; background-image: radial-gradient(#fed7aa 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-emerald { background-color: #ffffff !important; background-image: radial-gradient(#a7f3d0 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-emerald { background-color: #ffffff !important; background-image: radial-gradient(#a7f3d0 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-blue { background-color: #ffffff !important; background-image: radial-gradient(#bfdbfe 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-blue { background-color: #ffffff !important; background-image: radial-gradient(#bfdbfe 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-purple { background-color: #ffffff !important; background-image: radial-gradient(#d8b4fe 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-purple { background-color: #ffffff !important; background-image: radial-gradient(#d8b4fe 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-rose { background-color: #ffffff !important; background-image: radial-gradient(#fecdd3 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-rose { background-color: #ffffff !important; background-image: radial-gradient(#fecdd3 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-amber { background-color: #ffffff !important; background-image: radial-gradient(#fde68a 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-amber { background-color: #ffffff !important; background-image: radial-gradient(#fde68a 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-cyan { background-color: #ffffff !important; background-image: radial-gradient(#a5f3fc 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-cyan { background-color: #ffffff !important; background-image: radial-gradient(#a5f3fc 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+
+      .paper-dots-teal { background-color: #ffffff !important; background-image: radial-gradient(#99f6e4 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-teal { background-color: #ffffff !important; background-image: radial-gradient(#99f6e4 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-fuchsia { background-color: #ffffff !important; background-image: radial-gradient(#f5d0fe 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-fuchsia { background-color: #ffffff !important; background-image: radial-gradient(#f5d0fe 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+      
+      .paper-dots-lime { background-color: #ffffff !important; background-image: radial-gradient(#d9f99d 2px, transparent 2px) !important; background-size: 1.5rem 1.5rem !important; background-attachment: local !important; }
+      .paper-dots-sparse-lime { background-color: #ffffff !important; background-image: radial-gradient(#d9f99d 2px, transparent 2px) !important; background-size: 3rem 3rem !important; background-attachment: local !important; }
+
+      .paper-stardust {
+        background-color: #f5f3ff !important;
+        background-image: 
+          radial-gradient(rgba(99, 102, 241, 0.15) 1.5px, transparent 1.5px) !important,
+          radial-gradient(rgba(139, 92, 246, 0.1) 2px, transparent 2px) !important;
+        background-size: 2rem 2rem, 3.5rem 3.5rem !important;
+        color: #1e1b4b !important;
+        background-attachment: local !important;
+      }
+
+      .paper-engineering {
+        background-color: #f0f9ff !important;
+        background-image: 
+          linear-gradient(rgba(14, 165, 233, 0.1) 1px, transparent 1px) !important,
+          linear-gradient(90deg, rgba(14, 165, 233, 0.1) 1px, transparent 1px) !important;
+        background-size: 1rem 1rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-grid-emerald {
+        background-color: #ecfdf5 !important;
+        background-image: 
+          linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px) !important,
+          linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px) !important;
+        background-size: 1.5rem 1.5rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-ruled-crimson {
+        background-color: #fff1f2 !important;
+        background-image: linear-gradient(rgba(225, 29, 72, 0.1) 2px, transparent 2px) !important;
+        background-size: 100% 2.25rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-engineering-cyan {
+        background-color: #ecfeff !important;
+        background-image: 
+          linear-gradient(rgba(8, 145, 178, 0.1) 1px, transparent 1px) !important,
+          linear-gradient(90deg, rgba(8, 145, 178, 0.1) 1px, transparent 1px) !important;
+        background-size: 1rem 1rem !important;
+        background-attachment: local !important;
+      }
+
+      .paper-isometric {
+        background-color: #ffffff !important;
+        background-image: 
+          linear-gradient(30deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+          linear-gradient(150deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+          linear-gradient(30deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+          linear-gradient(150deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+          linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75%, #e2e8f0),
+          linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75%, #e2e8f0) !important;
+        background-size: 40px 70px !important;
+        background-attachment: local !important;
+      }
+
+      /* PRINT SPECIFIC STYLES FOR EXPORTING ID CARDS */
+      @media print {
+        /* Hide everything by default */
+        body * {
+          visibility: hidden;
+          margin: 0;
+          padding: 0;
+        }
+
+        /* Specifically show the print area */
+        .id-print-area, .id-print-area * {
+          visibility: visible;
+        }
+
+        /* Layout for printing cards */
+        .id-print-area {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          display: grid !important;
+          grid-template-columns: repeat(2, 1fr) !important;
+          gap: 20px !important;
+          padding: 20px !important;
+          background: white !important;
+          visibility: visible !important;
+        }
+
+        /* Ensure card wrapper handles breaks */
+        .print-card-wrapper {
+          page-break-inside: avoid;
+          margin-bottom: 20px;
+        }
+
+        /* Hide specific elements marked as no-print */
+        .no-print {
+          display: none !important;
+        }
+
+        /* Remove scaling for print */
+        .scale-\[0\.85\] {
+          transform: scale(1) !important;
+        }
+
+        /* Remove shadows and backgrounds of the app that are not the cards */
+        #root {
+          background: white !important;
+        }
+      }
+
+      /* RESPONSIVE SCROLLBARS FOR ROTATED MOBILE DEVICES & SHORT SCREEN HEIGHTS */
+      @media (max-height: 768px) {
+        /* Allow main container to scroll naturally */
+        main {
+          overflow-y: auto !important;
+          height: auto !important;
+        }
+        
+        /* Allow the outer expense tracker container to grow and scroll */
+        .expense-tracker-container {
+          overflow-y: auto !important;
+          height: auto !important;
+        }
+        
+        /* Make columns wrapper stack vertically on short views */
+        .expense-columns-wrapper {
+          flex-direction: column !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+        
+        /* Allow left and right panels to expand to full content heights */
+        .expense-column {
+          width: 100% !important;
+          max-width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+        
+        .expense-column > div,
+        .expense-column .flex-1,
+        .expense-column .overflow-y-auto {
+          height: auto !important;
+          overflow: visible !important;
+        }
+        
+        /* Disable custom scrollbars nesting in the columns to let browser scroll smoothly */
+        .expense-column .custom-scrollbar-amber {
+          overflow-y: visible !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
+    "uuid": "https://esm.sh/uuid@^13.0.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "date-fns": "https://esm.sh/date-fns@^4.1.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+<script>
+  if (localStorage.getItem('theme') === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+</script>
+</head>
+  <body class="bg-transparent text-slate-800 antialiased overflow-hidden" style="background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=2000'); background-size: cover; background-position: center; background-attachment: fixed;">
+    <div id="root" class="min-h-screen bg-transparent"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

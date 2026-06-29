@@ -1,0 +1,7 @@
+442:                      <div className="p-3 bg-emerald-500 text-white rounded-2xl shadow-md shadow-emerald-500/10 shrink-0">
+648:                        <div className="p-3 bg-gradient-to-tr from-purple-600 to-indigo-600 text-white rounded-2xl shadow-lg shadow-purple-500/20">
+653:                          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight italic uppercase mt-0.5">AI Weekly Journal Insights</h2>
+767:                      <div className="p-3 bg-emerald-600 text-white rounded-2xl">
+826:                              <span className={`text-[11px] font-black ${isToday ? 'w-5 h-5 bg-emerald-600 text-white rounded-full flex items-center justify-center' : isSelected ? 'text-emerald-600' : 'text-slate-400'}`}>
+876:                  <div className="p-3 bg-emerald-600 text-white rounded-2xl shadow-lg">
+945:                          <span className={`text-sm font-black ${isToday ? 'w-7 h-7 bg-emerald-600 text-white rounded-full flex items-center justify-center' : isSelected ? 'text-emerald-600' : 'text-slate-400'}`}>

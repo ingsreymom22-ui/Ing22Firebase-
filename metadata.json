@@ -1,0 +1,8 @@
+{
+  "name": "Ingsrey22 Firebase",
+  "description": "Streamline list creation with icon palettes and automated bullets, featuring precise cursor selection and professional desktop-optimized formatting tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
