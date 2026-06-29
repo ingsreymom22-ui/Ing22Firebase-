@@ -651,15 +651,11 @@ const App: React.FC = () => {
         // 3. Conflict Prevention: Only apply conflict resolution if this is not the initial session load.
         // On initial login or startup, always trust the database source of truth.
         if (!isFirstLoad) {
-          const currentLocalStr = JSON.stringify(currentDataRef.current);
-          const hasUnsavedLocalState = lastScheduledDataStrRef.current !== previousDataSyncRef.current;
-          
-          if (hasUnsavedLocalState || hasUnsavedChangesRef.current || isSyncingRef.current || currentLocalStr !== incomingStr) {
-            // If the update came while we are working or if it's already "old" compared to current local state, ignore it.
-            const wasRecentlyUpdated = Date.now() - lastLocalUpdateRef.current < 4000; // 4s window is enough for debounce
-            if (wasRecentlyUpdated || hasUnsavedChangesRef.current || isSyncingRef.current || hasUnsavedLocalState) {
-              return;
-            }
+          // If we are currently making a network save, wait for our own echo to bounce back
+          // instead of applying it now (which could revert rapid subsequent local keystrokes).
+          if (isSyncingRef.current || hasUnsavedChangesRef.current) {
+             const wasRecentlyUpdated = Date.now() - lastLocalUpdateRef.current < 2000;
+             if (wasRecentlyUpdated) return;
           }
         }
 
@@ -1506,7 +1502,7 @@ const App: React.FC = () => {
                 Cloud Sync Success
               </span>
               <span className="text-[9px] font-medium leading-normal text-slate-400 mt-1">
-                Data saved successfully to Supabase
+                Data saved successfully to Firebase
               </span>
             </div>
             <div className="flex items-center justify-center w-4.5 h-4.5 rounded-full bg-emerald-500 text-slate-950 ml-2 shadow-inner">

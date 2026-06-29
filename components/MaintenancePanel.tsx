@@ -35,7 +35,7 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
       setSyncStatus({ 
         configured, 
         connected, 
-        error: !configured ? "Environment variables VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY are missing." : (connected ? null : "Could not reach Supabase. Ensure 'dps_data' table exists and RLS is configured.")
+        error: !configured ? "Environment variables missing." : (connected ? null : "Could not reach Firebase.")
       });
     } catch (err: any) {
       setSyncStatus({ configured: false, connected: false, error: err.message || String(err) });
@@ -290,7 +290,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
                             ))}
                         </div>
 
-                        {/* Supabase Integration Control Panel */}
+                        {/* Firebase Integration Control Panel */}
                         <div className="bg-slate-50 border border-slate-200 p-8 rounded-[40px] mt-12 space-y-6">
                             <div className="flex items-start justify-between gap-6 flex-wrap md:flex-nowrap">
                                 <div className="flex items-start gap-5">

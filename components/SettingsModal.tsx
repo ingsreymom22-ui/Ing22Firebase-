@@ -197,11 +197,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [isPhoneMode, setIsPhoneMode] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
-  const [isCodeSent, setIsCodeSent] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -224,7 +219,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
       setSyncStatus({ 
         configured, 
         connected, 
-        error: !configured ? "Missing VITE_SUPABASE keys." : (connected ? null : "Could not reach database.")
+        error: !configured ? "Environment variables missing." : (connected ? null : "Could not reach Firebase.")
       });
     } catch (err: any) {
       setSyncStatus({ configured: false, connected: false, error: err.message || String(err) });
@@ -710,7 +705,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     try {
       const { supabase, isSupabaseConfigured } = await import('../services/supabase');
       if (!isSupabaseConfigured()) {
-        throw new Error("Supabase is not configured yet! Please check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your environment variables/secrets menu.");
+        throw new Error("Firebase is not configured yet!");
       }
       if (isSignUpMode) {
         const { data, error } = await supabase.auth.signUp({ email, password });
@@ -721,7 +716,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
         }
         
         if (data?.session === null) {
-          alert("Success! A confirmation link has been sent to your email. Please check your inbox and verify your account to log in. (Note: You can turn off 'Confirm email' in your Supabase dashboard to login instantly)");
+          alert("Success! A confirmation link has been sent to your email. Please check your inbox and verify your account to log in.");
           setIsSignUpMode(false);
           setPassword('');
         } else {
@@ -736,36 +731,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     } catch (error: any) {
       console.error(error);
       setEmailError(error.message || `Error ${isSignUpMode ? 'signing up' : 'signing in'} with Email/Password`);
-    } finally {
-      setIsEmailLoading(false);
-    }
-  };
-
-  const handlePhoneAction = async () => {
-    setEmailError('');
-    setIsEmailLoading(true);
-    try {
-      const { supabase } = await import('../services/supabase');
-      if (!isCodeSent) {
-          const { RecaptchaVerifier } = await import('firebase/auth');
-          const auth = (await import('firebase/auth')).getAuth();
-          if (!window.recaptchaVerifier) {
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-              'size': 'invisible'
-            });
-          }
-          // @ts-ignore
-          const result = await supabase.auth.signInWithPhoneNumber(phone, window.recaptchaVerifier);
-          if (result.error) throw result.error;
-          setConfirmationResult(result.data);
-          setIsCodeSent(true);
-      } else {
-          const result = await confirmationResult.confirm(verificationCode);
-          if (!result.user) throw new Error("Verification failed");
-      }
-    } catch (error: any) {
-      console.error(error);
-      setEmailError(error.message || 'Error with Phone Authentication');
     } finally {
       setIsEmailLoading(false);
     }
@@ -828,7 +793,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                             <div className="w-full">
                               <p className="text-sm font-black text-slate-800 mb-1">Synced & Backed Up</p>
                               {currentUser?.email && <p className="text-[10px] font-bold text-orange-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
-                              {/* Hidden Supabase Cloud Active indicator per user request */}
+                              {/* Hidden Firebase Cloud Active indicator per user request */}
                               <p className="text-xs text-slate-500 leading-relaxed mb-4">
                                 Your data is successfully synchronizing live!
                               </p>
@@ -861,89 +826,43 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                             )}
                              <div className="space-y-3 mb-4">
                                    <div id="recaptcha-container"></div>
-                                   {!isPhoneMode ? (
-                                     <>
-                                       <input 
-                                         type="email"
-                                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
-                                         placeholder="Email"
-                                         value={email}
-                                         onChange={(e) => setEmail(e.target.value)}
-                                         disabled={isEmailLoading}
-                                       />
-                                       <input 
-                                         type="password"
-                                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
-                                         placeholder="Password"
-                                         value={password}
-                                         onChange={(e) => setPassword(e.target.value)}
-                                         disabled={isEmailLoading}
-                                       />
-                                       <button 
-                                         onClick={handleEmailPasswordAction}
-                                         disabled={isEmailLoading || !email || !password}
-                                         className="px-6 w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 shadow-lg transition-all font-black uppercase text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                         {isEmailLoading ? (
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                         ) : (
-                                            <LogIn size={16} />
-                                         )}
-                                         {isSignUpMode ? 'Sign Up' : 'Sign In'} with Email
-                                       </button>
-                                       
-                                       <div className="text-center pb-2">
-                                          <button
-                                             onClick={() => setIsSignUpMode(!isSignUpMode)}
-                                             className="text-xs text-orange-600 hover:text-orange-700 font-bold underline"
-                                          >
-                                            {isSignUpMode ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
-                                          </button>
-                                       </div>
-                                     </>
-                                   ) : (
-                                     <>
-                                        {!isCodeSent ? (
-                                          <>
-                                            <input 
-                                               type="tel"
-                                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
-                                               placeholder="Phone Number (e.g. +1234567890)"
-                                               value={phone}
-                                               onChange={(e) => setPhone(e.target.value)}
-                                               disabled={isEmailLoading}
-                                            />
-                                            <button 
-                                               onClick={handlePhoneAction}
-                                               disabled={isEmailLoading || !phone}
-                                               className="px-6 w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 shadow-lg transition-all font-black uppercase text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                                            >
-                                               {isEmailLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <LogIn size={16} />}
-                                               Send Code
-                                            </button>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <input 
-                                               type="text"
-                                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
-                                               placeholder="6-digit Verification Code"
-                                               value={verificationCode}
-                                               onChange={(e) => setVerificationCode(e.target.value)}
-                                               disabled={isEmailLoading}
-                                            />
-                                            <button 
-                                               onClick={handlePhoneAction}
-                                               disabled={isEmailLoading || !verificationCode}
-                                               className="px-6 w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 shadow-lg transition-all font-black uppercase text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                                            >
-                                               {isEmailLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <LogIn size={16} />}
-                                               Verify Code
-                                            </button>
-                                          </>
-                                        )}
-                                     </>
-                                   )}
+                                   <input 
+                                     type="email"
+                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
+                                     placeholder="Email"
+                                     value={email}
+                                     onChange={(e) => setEmail(e.target.value)}
+                                     disabled={isEmailLoading}
+                                   />
+                                   <input 
+                                     type="password"
+                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
+                                     placeholder="Password"
+                                     value={password}
+                                     onChange={(e) => setPassword(e.target.value)}
+                                     disabled={isEmailLoading}
+                                   />
+                                   <button 
+                                     onClick={handleEmailPasswordAction}
+                                     disabled={isEmailLoading || !email || !password}
+                                     className="px-6 w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 shadow-lg transition-all font-black uppercase text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                     {isEmailLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                     ) : (
+                                        <LogIn size={16} />
+                                     )}
+                                     {isSignUpMode ? 'Sign Up' : 'Sign In'} with Email
+                                   </button>
+                                   
+                                   <div className="text-center pb-2">
+                                      <button
+                                         onClick={() => setIsSignUpMode(!isSignUpMode)}
+                                         className="text-xs text-orange-600 hover:text-orange-700 font-bold underline"
+                                      >
+                                        {isSignUpMode ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+                                      </button>
+                                   </div>
 
                                    <div className="flex items-center gap-2">
                                      <div className="h-px bg-slate-200 flex-1"></div>
@@ -952,31 +871,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                    </div>
 
                                    <div className="grid grid-cols-1 gap-2 pt-1">
-                                      {isPhoneMode ? (
-                                        <button 
-                                          onClick={() => {
-                                            setIsPhoneMode(false);
-                                            setEmailError('');
-                                            setIsCodeSent(false);
-                                          }}
-                                          className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 flex items-center justify-center gap-2"
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                                          Email / Password
-                                        </button>
-                                      ) : (
-                                        <button 
-                                          onClick={() => {
-                                            setIsPhoneMode(true);
-                                            setEmailError('');
-                                          }}
-                                          className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 flex items-center justify-center gap-2"
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
-                                          Phone Number
-                                        </button>
-                                      )}
-
                                       <button 
                                         onClick={async () => {
                                           try {

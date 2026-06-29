@@ -2578,8 +2578,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
     } catch (error: any) {
-      console.error("Supabase sharing failed:", error);
-      setCloudShareError(`Failed to create cloud link. Error: ${error.message || String(error)}. Make sure you have run the latest SQL setup script to create the dps_shares table!`);
+      console.error("Firebase sharing failed:", error);
+      setCloudShareError(`Failed to create cloud link. Error: ${error.message || String(error)}.`);
     } finally {
       setIsCloudShareLoading(false);
     }
@@ -7188,7 +7188,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-450 rounded-xl text-xs flex flex-col gap-1">
                 <p className="font-extrabold flex items-center gap-1.5 uppercase tracking-wide">⚡ Smart Compression & Chunking Enabled</p>
                 <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                  This folder is <strong>{getTopicSizeString(sharingTopic)}</strong>. Supabase handles large payloads, so you can share it seamlessly!
+                  This folder is <strong>{getTopicSizeString(sharingTopic)}</strong>. Firebase handles large payloads via Storage, so you can share it seamlessly!
                 </p>
               </div>
             )}
