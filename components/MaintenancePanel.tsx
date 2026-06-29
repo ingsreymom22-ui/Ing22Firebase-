@@ -4,7 +4,7 @@ import {
   ShieldCheck, RefreshCw, Clock, Lock, Unlock, Download, Upload, Database, ExternalLink, Camera, Sparkles,
   CalendarDays, CalendarRange, History
 } from 'lucide-react';
-import { getCloudBackups, createCloudBackup, getSupabaseProjectId } from '../services/supabase';
+import { getCloudBackups, createCloudBackup, getFirebaseProjectId } from '../services/firebase';
 import { format, differenceInDays } from 'date-fns';
 
 interface Props {
@@ -29,9 +29,9 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
   const checkSyncStatus = async () => {
     setCheckingSync(true);
     try {
-      const { isSupabaseConfigured, checkSupabaseConnection } = await import('../services/supabase');
-      const configured = isSupabaseConfigured();
-      const connected = await checkSupabaseConnection();
+      const { isFirebaseConfigured, checkFirebaseConnection } = await import('../services/firebase');
+      const configured = isFirebaseConfigured();
+      const connected = await checkFirebaseConnection();
       setSyncStatus({ 
         configured, 
         connected, 
@@ -44,26 +44,20 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
     }
   };
 
-  const SUPABASE_SQL_SETUP = `
--- Run this in Supabase SQL Editor
-CREATE TABLE IF NOT EXISTS public.dps_data (
-    owner_id UUID PRIMARY KEY,
-    data JSONB NOT NULL DEFAULT '{}'::jsonb,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-ALTER TABLE public.dps_data ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users manage own data" ON public.dps_data FOR ALL USING (auth.uid() = owner_id);
-
--- Force PostgreSQL to always send full JSON payloads to WebSockets
-ALTER TABLE public.dps_data REPLICA IDENTITY FULL;
-
--- Enable Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
+  const FIREBASE_SETUP_INFO = `
+Firestore Security Rules:
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /dps_data/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
   `.trim();
 
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
-    alert("SQL copied to clipboard!");
+  const handleCopyRules = () => {
+    navigator.clipboard.writeText(FIREBASE_SETUP_INFO);
+    alert("Firebase Rules copied to clipboard!");
   };
 
   useEffect(() => {
@@ -131,7 +125,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
     if (confirm(`CRITICAL WARNING: You are about to restore data from ${format(new Date(backup.timestamp), 'PPPP p')}. This will delete all changes made after that time. Are you sure?`)) {
        try {
          setLoading(true);
-         const { fetchBackupPayload } = await import('../services/supabase');
+         const { fetchBackupPayload } = await import('../services/firebase');
          const fullData = await fetchBackupPayload(backup);
          if (fullData) {
            onUpdate({ ...fullData, systemLocked: false });
@@ -322,7 +316,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
                                             <h4 className="font-black text-slate-800 uppercase text-base tracking-tight leading-none">Firebase Cloud Database</h4>
                                             <div className="flex items-center gap-2">
                                               <span className="text-[9px] font-bold text-slate-400 bg-white border border-slate-100 px-2 py-0.5 rounded">
-                                                Project: {getSupabaseProjectId()}
+                                                Project: {getFirebaseProjectId()}
                                               </span>
                                               {currentUser?.uid && (
                                                 <span className="text-[9px] font-bold text-slate-400 bg-white border border-slate-100 px-2 py-0.5 rounded">

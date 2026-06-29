@@ -2144,7 +2144,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     
     setIsUploading(true);
     try {
-      const { uploadFile } = await import('../services/supabase');
+      const { uploadFile } = await import('../services/firebase');
       const storedUser = localStorage.getItem('dps_user');
       let userId = 'anon';
       if (storedUser) {
@@ -4915,7 +4915,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     }
 
     try {
-      const { createSharedNote } = await import('../services/supabase');
+      const { createSharedNote } = await import('../services/firebase');
       const shareId = await createSharedNote(userId, userName, 'self-learning', sharingTopic.title, sharingTopic);
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
@@ -5013,7 +5013,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
        setSelectedTopicId(null);
     }
 
-    import('../services/supabase').then(({ saveTopic }) => {
+    import('../services/firebase').then(({ saveTopic }) => {
       const storedUser = localStorage.getItem('dps_user');
       if (storedUser) {
         try {

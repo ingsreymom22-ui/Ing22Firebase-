@@ -16,12 +16,12 @@ const fStorage = getStorage(app);
 let lastSyncStatus = false;
 let isSyncingQueue = false;
 
-export const checkSupabaseConnection = async () => {
+export const checkFirebaseConnection = async () => {
     return typeof window !== 'undefined' && window.navigator.onLine;
 };
 
-// Mock Supabase Auth object to keep App.tsx working seamlessly
-export const supabase = {
+// Mock Auth object to keep App.tsx working seamlessly
+export const authService = {
   auth: {
     onAuthStateChange: (callback: any) => {
       const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -108,9 +108,9 @@ export const supabase = {
   }
 };
 
-export const getSupabaseProjectId = () => config.projectId;
-export const getSupabaseAuthProvidersUrl = () => `https://console.firebase.google.com/project/${config.projectId}/authentication/providers`;
-export const isSupabaseConfigured = () => true;
+export const getFirebaseProjectId = () => config.projectId;
+export const getFirebaseAuthProvidersUrl = () => `https://console.firebase.google.com/project/${config.projectId}/authentication/providers`;
+export const isFirebaseConfigured = () => true;
 
 export const logOut = async () => {
   await firebaseSignOut(auth);
@@ -123,8 +123,6 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   let isInitial = true;
   
   const unsubscribe = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
-    if (docSnap.metadata.hasPendingWrites) return;
-    
     if (docSnap.exists()) {
       const payload = docSnap.data();
       if (payload.isChunked && payload.numChunks > 0) {
@@ -191,7 +189,6 @@ export const fetchData = async (userId: string) => {
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let latestDataState: any = null;
-let isCurrentlySaving = false;
 
 export const saveData = async (userId: string, dataState: any, instant: boolean = false) => {
   if (!userId || userId === 'unknown') return;
@@ -200,12 +197,6 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
   if (saveTimeout) clearTimeout(saveTimeout);
   
   const performSave = async () => {
-    if (isCurrentlySaving) {
-      // If a save is already in progress, reschedule this one
-      saveTimeout = setTimeout(performSave, 500);
-      return;
-    }
-
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       console.log("Device offline. Queuing data for sync.");
       await localIndexedDB.queueSync(userId, latestDataState);
@@ -213,9 +204,9 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       return;
     }
 
-    isCurrentlySaving = true;
     try {
-      const dataStr = JSON.stringify(latestDataState);
+      const dataToSave = latestDataState;
+      const dataStr = JSON.stringify(dataToSave);
       const size = dataStr.length;
       
       let payload = {};
@@ -231,21 +222,21 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
 
         payload = {
            folderId: userId,
-           updatedAt: latestDataState.updatedAt || new Date().getTime(),
-           version: latestDataState.version || 1,
+           updatedAt: dataToSave.updatedAt || new Date().getTime(),
+           version: dataToSave.version || 1,
            numChunks: numChunks,
            isChunked: true
         };
         
         await Promise.race([
             batch.commit(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Batch Timeout")), 10000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Batch Timeout")), 15000))
         ]);
       } else {
         payload = {
            folderId: userId,
-           updatedAt: latestDataState.updatedAt || new Date().getTime(),
-           version: latestDataState.version || 1,
+           updatedAt: dataToSave.updatedAt || new Date().getTime(),
+           version: dataToSave.version || 1,
            dataStr: dataStr,
            isChunked: false
         };
@@ -253,7 +244,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       
       await Promise.race([
           setDoc(doc(db, 'dps_data', userId), payload),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Save Timeout")), 8000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Save Timeout")), 10000))
       ]);
       
       lastSyncStatus = true;
@@ -261,15 +252,13 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       console.error("Firebase exception during save:", error);
       await localIndexedDB.queueSync(userId, latestDataState);
       lastSyncStatus = false;
-    } finally {
-      isCurrentlySaving = false;
     }
   };
 
   if (instant) {
-    await performSave();
+    return await performSave();
   } else {
-    saveTimeout = setTimeout(performSave, 1000);
+    saveTimeout = setTimeout(performSave, 2000);
   }
 };
 
@@ -359,11 +348,12 @@ export const deleteFile = async (path: string) => {
   }
 };
 
-export const saveTopic = async (userId: string, topic: any) => {
+export const saveTopic = async (userId: string, topic: any, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_topics', topic.id), {
       ...topic,
+      category,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
     }, { merge: true });
@@ -372,7 +362,7 @@ export const saveTopic = async (userId: string, topic: any) => {
   }
 };
 
-export const deleteStudent = async (userId: string, studentId: string) => {
+export const deleteStudent = async (userId: string, studentId: string, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
     await deleteDoc(doc(db, 'dps_students', studentId));
@@ -381,11 +371,12 @@ export const deleteStudent = async (userId: string, studentId: string) => {
   }
 };
 
-export const saveStudent = async (userId: string, student: any) => {
+export const saveStudent = async (userId: string, student: any, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
     await setDoc(doc(db, 'dps_students', student.id), {
       ...student,
+      category,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
     }, { merge: true });
@@ -394,7 +385,7 @@ export const saveStudent = async (userId: string, student: any) => {
   }
 };
 
-export const deleteTopic = async (userId: string, topicId: string) => {
+export const deleteTopic = async (userId: string, topicId: string, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
     await deleteDoc(doc(db, 'dps_topics', topicId));
@@ -447,16 +438,20 @@ export const saveJournalEntry = async (userId: string, date: string, entry: any)
   }
 };
 
-export const saveExpense = async (userId: string, expense: any) => {
+export const saveExpense = async (userId: string, expense: any, isDelete: boolean = false) => {
   if (!auth.currentUser) return;
   try {
-    await setDoc(doc(db, 'dps_expenses', expense.id), {
-      ...expense,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
+    if (isDelete) {
+      await deleteDoc(doc(db, 'dps_expenses', expense.id));
+    } else {
+      await setDoc(doc(db, 'dps_expenses', expense.id), {
+        ...expense,
+        owner_id: auth.currentUser.uid,
+        updated_at: new Date().toISOString()
+      }, { merge: true });
+    }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_expenses');
+    handleFirestoreError(error, isDelete ? OperationType.DELETE : OperationType.WRITE, `dps_expenses/${expense.id}`);
   }
 };
 

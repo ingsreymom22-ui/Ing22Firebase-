@@ -32,7 +32,7 @@ import {
   Bookmark
 } from 'lucide-react';
 import { Tab, UserRole, AppSettings, ViewMode, StudentCategory, AppData, CurrentUser } from '../types';
-import { getSyncStatus } from '../services/supabase';
+import { getSyncStatus } from '../services/firebase';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -100,8 +100,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     const checkStatus = async () => {
-      const { checkSupabaseConnection } = await import('../services/supabase');
-      const active = typeof window !== 'undefined' && window.navigator.onLine && await checkSupabaseConnection();
+      const { checkFirebaseConnection } = await import('../services/firebase');
+      const active = typeof window !== 'undefined' && window.navigator.onLine && await checkFirebaseConnection();
       setIsOnline(!!active);
     };
 

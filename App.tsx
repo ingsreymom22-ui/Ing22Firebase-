@@ -35,8 +35,8 @@ import {
   subscribeToData,
   saveData,
   logOut,
-  supabase,
-} from "./services/supabase";
+  authService,
+} from "./services/firebase";
 import { decodeFromURLSafeBase64 } from "./services/sharingEncoder";
 import { storage } from "./services/storage";
 import { Menu, MessageSquare, X, GraduationCap, Cloud, Check } from "lucide-react";
@@ -142,7 +142,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = authService.auth.onAuthStateChange((event, session) => {
       setIsAuthInitializing(false);
       const user = session?.user;
       if (user) {
@@ -166,7 +166,7 @@ const App: React.FC = () => {
     });
 
     // Initial fetch if already logged in via session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    authService.auth.getSession().then(({ data: { session } }) => {
       if (!session) setIsAuthInitializing(false);
     });
 
@@ -241,9 +241,18 @@ const App: React.FC = () => {
 
   const setData = (action: React.SetStateAction<AppData>) => {
     lastLocalUpdateRef.current = Date.now();
-    hasUnsavedChangesRef.current = true;
     setInternalData((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
+      
+      // Deep comparison to avoid unnecessary syncs
+      const nextStr = JSON.stringify(next);
+      const prevStr = JSON.stringify(prev);
+      
+      if (nextStr === prevStr) {
+        return prev;
+      }
+      
+      hasUnsavedChangesRef.current = true;
       return {
         ...next,
         updatedAt: Date.now(),
@@ -322,6 +331,7 @@ const App: React.FC = () => {
 
   const previousDataSyncRef = useRef<string | null>(null);
   const lastScheduledDataStrRef = useRef<string | null>(null);
+  const lastSyncedUpdatedAtRef = useRef<number>(0);
   const isCloudLoadedRef = useRef(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -329,36 +339,41 @@ const App: React.FC = () => {
   // Supabase Global Auto-Sync Hook
   useEffect(() => {
     if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
-      const dataStr = JSON.stringify(data);
-      if (dataStr === lastScheduledDataStrRef.current) return;
+      // Only sync if the updatedAt has actually increased or we haven't synced this version yet
+      if (data.updatedAt <= lastSyncedUpdatedAtRef.current) return;
       
       const timer = setTimeout(async () => {
         // Double check after debounce
-        if (JSON.stringify(currentDataRef.current) === lastScheduledDataStrRef.current) return;
+        if (currentDataRef.current.updatedAt <= lastSyncedUpdatedAtRef.current) return;
         
-        lastScheduledDataStrRef.current = dataStr;
+        const dataToSave = currentDataRef.current;
+        const dataStr = JSON.stringify(dataToSave);
+        
         setIsSyncing(true);
         isSyncingRef.current = true;
         
         try {
-          // Instant saves the snapshot of the data state directly without extra debouncing
-          await saveData(currentUser.uid!, data, true);
+          await saveData(currentUser.uid!, dataToSave, true);
+          lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || Date.now();
           previousDataSyncRef.current = dataStr;
+          lastScheduledDataStrRef.current = dataStr;
           
-          // Clear hasUnsavedChangesRef ONLY if the current local state hasn't changed since this save ran
           if (JSON.stringify(currentDataRef.current) === dataStr) {
             hasUnsavedChangesRef.current = false;
           }
+          
+          setShowSyncToast(true);
+          setTimeout(() => setShowSyncToast(false), 3000);
         } catch (err) {
           console.error("Auto Sync Error:", err);
         } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
         }
-      }, 1000); // Increased debounce to 1s to be less aggressive and prevent "always blue" during active typing
+      }, 1500); 
       return () => clearTimeout(timer);
     }
-  }, [data, currentUser, loading]);
+  }, [data?.updatedAt, currentUser?.uid, loading]);
 
   // No auto-seeding of named tasks per user request for a blank/clean start
   useEffect(() => {
@@ -399,7 +414,7 @@ const App: React.FC = () => {
       }
     } else if (shareId) {
       setIsFetchSharedLoading(true);
-      import("./services/supabase").then(({ getSharedNote }) => {
+      import("./services/firebase").then(({ getSharedNote }) => {
         getSharedNote(shareId)
           .then((sharedDoc) => {
             setIsFetchSharedLoading(false);
@@ -448,7 +463,7 @@ const App: React.FC = () => {
         const updatedTopics = [...currentTopics, clonedTopic];
         handleUpdate({ ...data, dpssTopics: updatedTopics });
 
-        import("./services/supabase").then(({ saveTopic }) => {
+        import("./services/firebase").then(({ saveTopic }) => {
           if (currentUser?.uid) {
             saveTopic(currentUser.uid, clonedTopic, "dpss");
           }
@@ -461,7 +476,7 @@ const App: React.FC = () => {
         const updatedTopics = [...currentTopics, clonedTopic];
         handleUpdate({ ...data, selfLearningTopics: updatedTopics });
 
-        import("./services/supabase").then(({ saveTopic }) => {
+        import("./services/firebase").then(({ saveTopic }) => {
           if (currentUser?.uid) {
             saveTopic(currentUser.uid, clonedTopic, "selfLearning");
           }
@@ -480,7 +495,7 @@ const App: React.FC = () => {
 
       handleUpdate({ ...data, journalEntries: newEntries });
 
-      import("./services/supabase").then(({ saveJournalEntry }) => {
+      import("./services/firebase").then(({ saveJournalEntry }) => {
         if (currentUser?.uid) {
           saveJournalEntry(currentUser.uid, targetDate, entry);
         }
@@ -496,7 +511,7 @@ const App: React.FC = () => {
 
       handleUpdate({ ...data, dailyNotes: newNotes });
 
-      import("./services/supabase").then(({ saveDailyNote }) => {
+      import("./services/firebase").then(({ saveDailyNote }) => {
         if (currentUser?.uid) {
           saveDailyNote(currentUser.uid, targetDate, content);
         }
@@ -660,21 +675,23 @@ const App: React.FC = () => {
         // 3. Conflict Prevention: Only apply conflict resolution if this is not the initial session load.
         // On initial login or startup, always trust the database source of truth.
         if (!isFirstLoad) {
-          // If we are currently making a network save, wait for our own echo to bounce back
-          // instead of applying it now (which could revert rapid subsequent local keystrokes).
-          if (isSyncingRef.current || hasUnsavedChangesRef.current) {
-             const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
-             // If we updated locally very recently (within 5 seconds), trust local state over server
-             if (timeSinceLastUpdate < 5000) return;
-          }
-
-          // If we have a local updatedAt timestamp, and the incoming one is older or missing, ignore it.
-          // This is the primary defense against disappearing data.
           const currentUpdatedAt = currentDataRef.current?.updatedAt || 0;
           const incomingUpdatedAt = newData?.updatedAt || 0;
           
-          if (incomingUpdatedAt < currentUpdatedAt) {
+          // If incoming data is NOT strictly newer, ignore it.
+          // This prevents loops and ensures we don't overwrite newer local changes.
+          if (incomingUpdatedAt <= currentUpdatedAt) {
             return;
+          }
+          
+          // If we are currently making a network save, or have unsaved local changes,
+          // we are extra cautious about applying server updates that might overwrite 
+          // our very recent local keystrokes.
+          if (isSyncingRef.current || hasUnsavedChangesRef.current) {
+             const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+             // If we updated locally very recently (within 2 seconds), trust local state over server
+             // unless the server data is significantly newer (handled by the updatedAt check above).
+             if (timeSinceLastUpdate < 2000) return;
           }
         }
 
@@ -724,6 +741,7 @@ const App: React.FC = () => {
         const finalStr = JSON.stringify(newData);
         previousDataSyncRef.current = finalStr;
         lastScheduledDataStrRef.current = finalStr;
+        lastSyncedUpdatedAtRef.current = newData.updatedAt || 0;
         setInternalData(newData);
         storage.setItem("dps_data", JSON.stringify(newData)); // SYNC to storage
         setLoading(false);
@@ -745,7 +763,7 @@ const App: React.FC = () => {
 
     if (currentUser?.uid) {
       try {
-        const { deleteStudent } = await import("./services/supabase");
+        const { deleteStudent } = await import("./services/firebase");
         await deleteStudent(currentUser.uid, id);
       } catch (error) {
         console.error("Failed to delete student:", error);
@@ -800,7 +818,7 @@ const App: React.FC = () => {
 
     if (currentUser?.uid) {
       try {
-        const { deleteTopic, saveTopic } = await import("./services/supabase");
+        const { deleteTopic, saveTopic } = await import("./services/firebase");
         if (isRoot) {
           await deleteTopic(currentUser.uid, id, category);
         } else {
@@ -940,7 +958,7 @@ const App: React.FC = () => {
     });
 
     if (currentUser?.uid) {
-      const { saveExpense } = await import("./services/supabase");
+      const { saveExpense } = await import("./services/firebase");
       await saveExpense(currentUser.uid, expense, isDelete);
     }
   };
@@ -1018,7 +1036,7 @@ const App: React.FC = () => {
       storage.setItem("dps_data", JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import("./services/supabase").then(({ saveStudent }) => {
+        import("./services/firebase").then(({ saveStudent }) => {
           for (const student of newStudentsBatch) {
             saveStudent(currentUser.uid!, student);
           }
@@ -1077,7 +1095,7 @@ const App: React.FC = () => {
       handleUpdate({ ...data, students: updatedStudents });
 
       if (currentUser?.uid) {
-        const { saveStudent } = await import("./services/supabase");
+        const { saveStudent } = await import("./services/firebase");
         const student = updatedStudents.find((s) => s.id === id);
         if (student) await saveStudent(currentUser.uid, student);
       }

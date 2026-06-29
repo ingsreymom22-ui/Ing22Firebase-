@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, CurrentUser, AppData } from '../types';
 import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table, Download, Upload, RefreshCw, ExternalLink } from 'lucide-react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
-import { getSupabaseProjectId } from '../services/supabase';
+import { getFirebaseProjectId } from '../services/firebase';
 
 declare global {
   interface Window {
@@ -213,9 +213,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
   const checkSyncStatus = async () => {
     setCheckingSync(true);
     try {
-      const { isSupabaseConfigured, checkSupabaseConnection } = await import('../services/supabase');
-      const configured = isSupabaseConfigured();
-      const connected = await checkSupabaseConnection();
+      const { isFirebaseConfigured, checkFirebaseConnection } = await import('../services/firebase');
+      const configured = isFirebaseConfigured();
+      const connected = await checkFirebaseConnection();
       setSyncStatus({ 
         configured, 
         connected, 
@@ -703,12 +703,12 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     setEmailError('');
     setIsEmailLoading(true);
     try {
-      const { supabase, isSupabaseConfigured } = await import('../services/supabase');
-      if (!isSupabaseConfigured()) {
+      const { authService, isFirebaseConfigured } = await import('../services/firebase');
+      if (!isFirebaseConfigured()) {
         throw new Error("Firebase is not configured yet!");
       }
       if (isSignUpMode) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await authService.auth.signUp({ email, password });
         if (error) throw error;
         
         if (data?.user && data.user.identities && data.user.identities.length === 0) {
@@ -723,7 +723,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
           // alert("Signed up successfully!");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await authService.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
       // Do not call onLogin() here because onLogin maps to signInWithGoogle.
@@ -874,9 +874,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                       <button 
                                         onClick={async () => {
                                           try {
-                                            const { supabase } = await import('../services/supabase');
+                                            const { authService } = await import('../services/firebase');
                                             // @ts-ignore
-                                            await supabase.auth.signInWithOAuth({ provider: 'google' });
+                                            await authService.auth.signInWithOAuth({ provider: 'google' });
                                           } catch (e: any) { setEmailError(e.message); }
                                         }}
                                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 flex items-center justify-center gap-2"
@@ -888,9 +888,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                       <button 
                                         onClick={async () => {
                                           try {
-                                            const { supabase } = await import('../services/supabase');
+                                            const { authService } = await import('../services/firebase');
                                             // @ts-ignore
-                                            await supabase.auth.signInWithOAuth({ provider: 'facebook' });
+                                            await authService.auth.signInWithOAuth({ provider: 'facebook' });
                                           } catch (e: any) { setEmailError(e.message); }
                                         }}
                                         className="w-full px-4 py-2 bg-[#1877F2] hover:bg-[#1864D9] border border-transparent rounded-xl transition-all font-bold text-xs text-white flex items-center justify-center gap-2"
