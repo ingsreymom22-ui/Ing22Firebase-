@@ -152,9 +152,11 @@ const buildTopicTree = (flatTopics: any[]) => {
   const map = new Map<string, any>();
   const roots: any[] = [];
 
-  // Initialize map with clones and empty children
+  // Initialize map with clones and ensure children starts fresh
   flatTopics.forEach(t => {
-    map.set(t.id, { ...t, children: t.children || [] });
+    // We strip existing children to rebuild the tree from scratch using parentId links
+    const { children, ...rest } = t;
+    map.set(t.id, { ...rest, children: [] });
   });
 
   // Build tree
@@ -162,11 +164,13 @@ const buildTopicTree = (flatTopics: any[]) => {
     const node = map.get(t.id);
     if (t.parentId && map.has(t.parentId)) {
       const parent = map.get(t.parentId);
-      // Avoid duplicates if child already exists
       if (!parent.children.some((c: any) => c.id === t.id)) {
         parent.children.push(node);
       }
-    } else {
+    } else if (!t.parentId) {
+      // ONLY push to roots if it definitely has no parent.
+      // If it has a parentId but the parent is missing from the map, 
+      // we treat it as an orphan for now (it won't show at the root level).
       roots.push(node);
     }
   });
