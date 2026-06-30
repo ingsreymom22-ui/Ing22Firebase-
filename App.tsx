@@ -763,10 +763,10 @@ const App: React.FC = () => {
 
   const handlePermanentDeleteStudent = async (id: string) => {
     const previousData = { ...data };
-    const updatedStudents = data.students.filter((s) => s.id !== id);
-    const newData = { ...data, students: updatedStudents };
-    setData(newData);
-    storage.setItem("dps_data", JSON.stringify(newData));
+    handleUpdate((prev) => {
+      const updatedStudents = prev.students.filter((s) => s.id !== id);
+      return { ...prev, students: updatedStudents };
+    });
 
     if (currentUser?.uid) {
       try {
@@ -774,8 +774,7 @@ const App: React.FC = () => {
         await deleteStudent(currentUser.uid, id);
       } catch (error) {
         console.error("Failed to delete student:", error);
-        setData(previousData);
-        storage.setItem("dps_data", JSON.stringify(previousData));
+        handleUpdate(previousData);
         alert("Failed to delete student. The action has been reverted.");
       }
     }
@@ -819,9 +818,9 @@ const App: React.FC = () => {
 
     const previousData = { ...data };
     const updatedTopics = deleteFromTopics(data[field] || []);
-    const newData = { ...data, [field]: updatedTopics };
-    setData(newData);
-    storage.setItem("dps_data", JSON.stringify(newData));
+    handleUpdate((prev) => {
+      return { ...prev, [field]: updatedTopics };
+    });
 
     if (currentUser?.uid) {
       try {
@@ -837,8 +836,7 @@ const App: React.FC = () => {
         }
       } catch (error) {
         console.error("Failed to delete topic:", error);
-        setData(previousData);
-        storage.setItem("dps_data", JSON.stringify(previousData));
+        handleUpdate(previousData);
         alert("Failed to delete topic. The action has been reverted.");
       }
     }
@@ -870,17 +868,12 @@ const App: React.FC = () => {
   };
 
   const handleUpdateStudent = async (id: string, updates: Partial<Student>) => {
-    setData((prev) => {
+    handleUpdate((prev) => {
       const updatedStudents = prev.students.map((s) =>
         s.id === id ? { ...s, ...updates } : s,
       );
-      const newData = { ...prev, students: updatedStudents };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+      return { ...prev, students: updatedStudents };
     });
-
-    setHistory((prev) => [...prev.slice(-19), data]);
-    setRedoStack([]);
   };
 
   const handleUpdateTopic = async (
@@ -888,22 +881,17 @@ const App: React.FC = () => {
     topicToSave?: any,
     category: "dpss" | "selfLearning" = "dpss",
   ) => {
-    setData((prev) => {
-      const newData =
-        category === "dpss"
-          ? { ...prev, dpssTopics: updatedTopics }
-          : { ...prev, selfLearningTopics: updatedTopics };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+    handleUpdate((prev) => {
+      return category === "dpss"
+        ? { ...prev, dpssTopics: updatedTopics }
+        : { ...prev, selfLearningTopics: updatedTopics };
     });
   };
 
   const handleUpdateDailyNote = async (date: string, content: string) => {
-    setData((prev) => {
+    handleUpdate((prev) => {
       const newDailyNotes = { ...(prev.dailyNotes || {}), [date]: content };
-      const newData = { ...prev, dailyNotes: newDailyNotes };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+      return { ...prev, dailyNotes: newDailyNotes };
     });
   };
 
@@ -911,14 +899,12 @@ const App: React.FC = () => {
     date: string,
     entry: JournalEntry,
   ) => {
-    setData((prev) => {
+    handleUpdate((prev) => {
       const newJournalEntries = {
         ...(prev.journalEntries || {}),
         [date]: entry,
       };
-      const newData = { ...prev, journalEntries: newJournalEntries };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+      return { ...prev, journalEntries: newJournalEntries };
     });
   };
 
@@ -927,16 +913,14 @@ const App: React.FC = () => {
     habitId: string,
     completed: boolean | number,
   ) => {
-    setData((prev) => {
+    handleUpdate((prev) => {
       const completions = prev.habitCompletions || {};
       const dayCompletions = {
         ...(completions[date] || {}),
         [habitId]: completed,
       };
       const newCompletions = { ...completions, [date]: dayCompletions };
-      const newData = { ...prev, habitCompletions: newCompletions };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+      return { ...prev, habitCompletions: newCompletions };
     });
   };
 
@@ -944,7 +928,7 @@ const App: React.FC = () => {
     expense: ExpenseEntry,
     isDelete: boolean = false,
   ) => {
-    setData((prevData) => {
+    handleUpdate((prevData) => {
       let newExpenses = [...(prevData.expenses || [])];
       if (isDelete) {
         newExpenses = newExpenses.filter((e) => e.id !== expense.id);
@@ -958,10 +942,7 @@ const App: React.FC = () => {
           newExpenses = [expense, ...newExpenses];
         }
       }
-
-      const newData = { ...prevData, expenses: newExpenses };
-      storage.setItem("dps_data", JSON.stringify(newData));
-      return newData;
+      return { ...prevData, expenses: newExpenses };
     });
 
     if (currentUser?.uid) {
@@ -975,9 +956,7 @@ const App: React.FC = () => {
     const previous = history[history.length - 1];
     setRedoStack((prev) => [...prev, data]);
     setHistory((prev) => prev.slice(0, -1));
-    setData(previous);
-    storage.setItem("dps_data", JSON.stringify(previous));
-    if (currentUser?.uid) saveData(currentUser.uid, previous, true);
+    handleUpdate(previous, true);
   };
 
   const redo = () => {
@@ -985,9 +964,7 @@ const App: React.FC = () => {
     const next = redoStack[redoStack.length - 1];
     setHistory((prev) => [...prev, data]);
     setRedoStack((prev) => prev.slice(0, -1));
-    setData(next);
-    storage.setItem("dps_data", JSON.stringify(next));
-    if (currentUser?.uid) saveData(currentUser.uid, next, true);
+    handleUpdate(next, true);
   };
 
   useEffect(() => {
@@ -1012,7 +989,7 @@ const App: React.FC = () => {
   const handleAddStudent = async (
     parsedData?: Partial<Student> | Partial<Student>[],
   ) => {
-    setData((prev) => {
+    handleUpdate((prev) => {
       const incomingData = Array.isArray(parsedData)
         ? parsedData
         : parsedData
@@ -1036,12 +1013,6 @@ const App: React.FC = () => {
         } as Student;
       });
 
-      const newData = {
-        ...prev,
-        students: [...newStudentsBatch, ...prev.students],
-      };
-      storage.setItem("dps_data", JSON.stringify(newData));
-
       if (currentUser?.uid) {
         import("./services/firebase").then(({ saveStudent }) => {
           for (const student of newStudentsBatch) {
@@ -1049,7 +1020,10 @@ const App: React.FC = () => {
           }
         });
       }
-      return newData;
+      return {
+        ...prev,
+        students: [...newStudentsBatch, ...prev.students],
+      };
     });
   };
 
