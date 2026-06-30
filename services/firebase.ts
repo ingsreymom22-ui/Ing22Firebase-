@@ -128,6 +128,25 @@ export const logOut = async () => {
 // Architecture constants
 const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
+// Standalone helper for chunk fetching
+const fetchDocChunksStandalone = async (collectionPath: string, docId: string, numChunks: number) => {
+  try {
+    const chunkPromises = [];
+    for (let i = 0; i < numChunks; i++) {
+      chunkPromises.push(getDoc(doc(db, `${collectionPath}/${docId}/chunks`, i.toString())));
+    }
+    const chunkSnaps = await Promise.all(chunkPromises);
+    let fullString = '';
+    for (const snap of chunkSnaps) {
+      if (snap.exists()) fullString += snap.data().data;
+    }
+    return fullString ? JSON.parse(fullString) : null;
+  } catch (e) {
+    console.error(`Error fetching chunks for ${collectionPath}/${docId}`, e);
+    return null;
+  }
+};
+
 export const subscribeToData = (userId: string, onUpdate: (data: any) => void, onError?: () => void) => {
   let mainDoc: any = null;
   const studentsMap = new Map<string, any>();
@@ -163,20 +182,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
       const payload = docSnap.data();
       let data = null;
       if (payload.isChunked && payload.numChunks > 0) {
-         try {
-           const chunkPromises = [];
-           for (let i = 0; i < payload.numChunks; i++) {
-             chunkPromises.push(getDoc(doc(db, `dps_data/${userId}/chunks`, i.toString())));
-           }
-           const chunkSnaps = await Promise.all(chunkPromises);
-           let fullString = '';
-           for (const snap of chunkSnaps) {
-             if (snap.exists()) fullString += snap.data().data;
-           }
-           if (fullString) data = JSON.parse(fullString);
-         } catch(e) {
-           console.error("Error fetching chunked data", e);
-         }
+         data = await fetchDocChunksStandalone('dps_data', userId, payload.numChunks);
       } else if (payload.dataStr) {
          data = JSON.parse(payload.dataStr);
       } else {
@@ -224,15 +230,33 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   });
 
   // 3. Listen to granular topics collection
-  const unsubTopics = onSnapshot(query(collection(db, 'dps_topics'), where('owner_id', '==', userId)), (snap) => {
-    snap.docChanges().forEach(change => {
+  const unsubTopics = onSnapshot(query(collection(db, 'dps_topics'), where('owner_id', '==', userId)), async (snap) => {
+    const chunkPromises: Promise<void>[] = [];
+    
+    for (const change of snap.docChanges()) {
       const data = change.doc.data();
       if (change.type === 'removed') {
         topicsMap.delete(change.doc.id);
       } else {
-        topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+        if (data.isChunked && data.numChunks > 0) {
+          const p = fetchDocChunksStandalone('dps_topics', change.doc.id, data.numChunks).then(reconstructed => {
+            if (reconstructed) {
+              topicsMap.set(change.doc.id, { ...reconstructed, ...data, id: change.doc.id });
+            } else {
+              topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+            }
+          });
+          chunkPromises.push(p);
+        } else {
+          topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+        }
       }
-    });
+    }
+    
+    if (chunkPromises.length > 0) {
+      await Promise.all(chunkPromises);
+    }
+    
     isTopicsLoaded = true;
     mergeAndEmit();
   }, (err) => {
@@ -255,14 +279,9 @@ export const fetchData = async (userId: string) => {
       const payload = docSnap.data();
       lastSyncStatus = true;
       if (payload.isChunked && payload.numChunks > 0) {
-         let fullString = '';
-         for (let i = 0; i < payload.numChunks; i++) {
-           const chunkSnap = await getDoc(doc(db, `dps_data/${userId}/chunks`, i.toString()));
-           if (chunkSnap.exists()) {
-             fullString += chunkSnap.data().data;
-           }
-         }
-         return JSON.parse(fullString);
+         // Use the helper we defined in the closure scope of subscribeToData? 
+         // No, it's not exported. Let's define a standalone helper.
+         return await fetchDocChunksStandalone('dps_data', userId, payload.numChunks);
       }
       if (payload.dataStr) {
          return JSON.parse(payload.dataStr);
@@ -431,12 +450,31 @@ export const deleteFile = async (path: string) => {
 export const saveTopic = async (userId: string, topic: any, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
-    await setDoc(doc(db, 'dps_topics', topic.id), {
-      ...topic,
+    const topicStr = JSON.stringify(topic);
+    const size = topicStr.length;
+    const topicId = topic.id;
+    
+    let payload: any = {
       category,
       owner_id: auth.currentUser.uid,
       updated_at: new Date().toISOString()
-    }, { merge: true });
+    };
+
+    if (size > MAX_FIRESTORE_SIZE) {
+       const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+       const batch = writeBatch(db);
+       for (let i = 0; i < numChunks; i++) {
+          const chunkStr = topicStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+          batch.set(doc(db, `dps_topics/${topicId}/chunks`, i.toString()), { data: chunkStr });
+       }
+       payload.isChunked = true;
+       payload.numChunks = numChunks;
+       await batch.commit();
+    } else {
+       payload = { ...topic, ...payload, isChunked: false };
+    }
+
+    await setDoc(doc(db, 'dps_topics', topicId), payload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `dps_topics/${topic.id}`);
   }
@@ -468,7 +506,19 @@ export const saveStudent = async (userId: string, student: any, category: string
 export const deleteTopic = async (userId: string, topicId: string, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   try {
-    await deleteDoc(doc(db, 'dps_topics', topicId));
+    const docRef = doc(db, 'dps_topics', topicId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data.isChunked && data.numChunks > 0) {
+        const batch = writeBatch(db);
+        for (let i = 0; i < data.numChunks; i++) {
+          batch.delete(doc(db, `dps_topics/${topicId}/chunks`, i.toString()));
+        }
+        await batch.commit();
+      }
+    }
+    await deleteDoc(docRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `dps_topics/${topicId}`);
   }
@@ -493,24 +543,21 @@ export const saveExpense = async (userId: string, expense: any, isDelete: boolea
 export const saveTopicsBulk = async (userId: string, topicsToSave: { topic: any, category: string }[], topicIdsToDelete: { id: string, category: string }[]) => {
   if (!auth.currentUser) return;
   try {
-    const batch = writeBatch(db);
-    
-    topicsToSave.forEach(({ topic, category }) => {
-      const d = doc(db, 'dps_topics', topic.id);
-      batch.set(d, { 
-        ...topic, 
-        category,
-        owner_id: auth.currentUser!.uid, 
-        updated_at: new Date().toISOString() 
-      }, { merge: true });
-    });
+    // Note: for very large bulk saves with chunked topics, we process them individually 
+    // to handle potential chunk sub-collections correctly.
+    for (const { topic, category } of topicsToSave) {
+      await saveTopic(userId, topic, category);
+    }
 
+    const batch = writeBatch(db);
     topicIdsToDelete.forEach(({ id }) => {
       const d = doc(db, 'dps_topics', id);
       batch.delete(d);
     });
 
-    await batch.commit();
+    if (topicIdsToDelete.length > 0) {
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'dps_topics_bulk');
   }
@@ -539,14 +586,8 @@ export const getSharedNote = async (shareId: string) => {
     
     const payload = docSnap.data();
     if (payload.isChunked && payload.numChunks > 0) {
-      let fullString = '';
-      for (let i = 0; i < payload.numChunks; i++) {
-        const chunkSnap = await getDoc(doc(db, `dps_shares/${shareId}/chunks`, i.toString()));
-        if (chunkSnap.exists()) {
-          fullString += chunkSnap.data().data;
-        }
-      }
-      return { ...payload, payload: JSON.parse(fullString) };
+      const reconstructed = await fetchDocChunksStandalone('dps_shares', shareId, payload.numChunks);
+      return { ...payload, payload: reconstructed };
     }
     return payload;
   } catch (error) { 
