@@ -369,14 +369,14 @@ const App: React.FC = () => {
           }
           
           setShowSyncToast(true);
-          setTimeout(() => setShowSyncToast(false), 3000);
+          setTimeout(() => setShowSyncToast(false), 2000);
         } catch (err) {
           console.error("Auto Sync Error:", err);
         } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
         }
-      }, 1500); 
+      }, 500); 
       return () => clearTimeout(timer);
     }
   }, [data?.updatedAt, currentUser?.uid, loading]);
