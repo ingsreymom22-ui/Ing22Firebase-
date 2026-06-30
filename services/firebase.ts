@@ -138,24 +138,21 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   let isTopicsLoaded = false;
 
   const mergeAndEmit = () => {
-    // We need at least the main doc to provide the base structure
-    if (!isMainLoaded || !mainDoc) return;
+    // Only emit when ALL three initial snapshots have successfully loaded
+    if (!isMainLoaded || !isStudentsLoaded || !isTopicsLoaded) return;
+    if (!mainDoc) return;
     
     const combined = { ...mainDoc };
     
     // Merge Students: Collection data takes precedence
-    if (isStudentsLoaded && studentsMap.size > 0) {
-      combined.students = Array.from(studentsMap.values()).sort((a, b) => {
-        return (a.name || '').localeCompare(b.name || '') || (a.id || '').localeCompare(b.id || '');
-      });
-    }
+    combined.students = Array.from(studentsMap.values()).sort((a, b) => {
+      return (a.name || '').localeCompare(b.name || '') || (a.id || '').localeCompare(b.id || '');
+    });
     
     // Merge Topics: Collection data takes precedence
-    if (isTopicsLoaded && topicsMap.size > 0) {
-      const allTopics = Array.from(topicsMap.values());
-      combined.dpssTopics = allTopics.filter(t => t.category === 'dpss');
-      combined.selfLearningTopics = allTopics.filter(t => t.category === 'selfLearning');
-    }
+    const allTopics = Array.from(topicsMap.values());
+    combined.dpssTopics = allTopics.filter(t => t.category === 'dpss');
+    combined.selfLearningTopics = allTopics.filter(t => t.category === 'selfLearning');
     
     onUpdate(combined);
   };
