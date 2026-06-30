@@ -357,6 +357,7 @@ const App: React.FC = () => {
         isSyncingRef.current = true;
         
         try {
+          // Pass 'true' to ensure immediate network dispatch in services/firebase.ts
           await saveData(currentUser.uid!, dataToSave, true);
           const now = Date.now();
           lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || now;
@@ -376,7 +377,7 @@ const App: React.FC = () => {
           setIsSyncing(false);
           isSyncingRef.current = false;
         }
-      }, 500); 
+      }, 500); // Back to 500ms for "Google Docs" live feel, but with optimized Firestore parallel chunking
       return () => clearTimeout(timer);
     }
   }, [data?.updatedAt, currentUser?.uid, loading]);
@@ -664,40 +665,39 @@ const App: React.FC = () => {
         if (!newData) return;
 
         const incomingStr = JSON.stringify(newData);
-        const currentDataStr = JSON.stringify(currentDataRef.current);
+        const currentData = currentDataRef.current;
+        const currentDataStr = JSON.stringify(currentData);
         
-        // 1. If incoming data is exactly what we already have locally, do nothing but keep previousDataSyncRef updated
+        // 1. If incoming data is exactly what we already have locally, ignore
         if (currentDataStr === incomingStr) {
           previousDataSyncRef.current = incomingStr;
-          lastScheduledDataStrRef.current = incomingStr;
+          lastSyncedUpdatedAtRef.current = newData.updatedAt || 0;
           return;
         }
 
-        // 2. If incoming data matches the last state we successfully saved or fetched, ignore (echo block)
+        // 2. Echo block: if this is exactly what we just saved, ignore
         if (previousDataSyncRef.current === incomingStr) {
           return;
         }
 
-        // 3. Conflict Prevention: Only apply conflict resolution if this is not the initial session load.
-        // On initial login or startup, always trust the database source of truth.
+        // 3. Last Write Wins / Conflict Prevention
+        const currentUpdatedAt = currentData?.updatedAt || 0;
+        const incomingUpdatedAt = newData?.updatedAt || 0;
+
+        // On initial load, we always accept the cloud data
         if (!isFirstLoad) {
-          const currentUpdatedAt = currentDataRef.current?.updatedAt || 0;
-          const incomingUpdatedAt = newData?.updatedAt || 0;
-          
           // If incoming data is NOT strictly newer, ignore it.
-          // This prevents loops and ensures we don't overwrite newer local changes.
+          // This prevents older device states from overwriting newer ones.
           if (incomingUpdatedAt <= currentUpdatedAt) {
             return;
           }
           
-          // If we are currently making a network save, or have unsaved local changes,
-          // we are extra cautious about applying server updates that might overwrite 
-          // our very recent local keystrokes.
-          if (isSyncingRef.current || hasUnsavedChangesRef.current) {
-             const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
-             // If we updated locally very recently (within 2 seconds), trust local state over server
-             // unless the server data is significantly newer (handled by the updatedAt check above).
-             if (timeSinceLastUpdate < 2000) return;
+          // Protection during active editing
+          const timeSinceLastLocalUpdate = Date.now() - lastLocalUpdateRef.current;
+          if (timeSinceLastLocalUpdate < 1500 && incomingUpdatedAt < Date.now() - 500) {
+             // If we just edited locally, and the server data isn't "very fresh" (i.e. it might be a delayed echo or older sync)
+             // we defer to our local state to avoid "jumping" while typing.
+             return;
           }
         }
 
@@ -868,12 +868,22 @@ const App: React.FC = () => {
   };
 
   const handleUpdateStudent = async (id: string, updates: Partial<Student>) => {
+    let updatedStudent: Student | undefined;
     handleUpdate((prev) => {
-      const updatedStudents = prev.students.map((s) =>
-        s.id === id ? { ...s, ...updates } : s,
-      );
+      const updatedStudents = prev.students.map((s) => {
+        if (s.id === id) {
+          updatedStudent = { ...s, ...updates };
+          return updatedStudent;
+        }
+        return s;
+      });
       return { ...prev, students: updatedStudents };
     });
+
+    if (currentUser?.uid && updatedStudent) {
+      const { saveStudent } = await import("./services/firebase");
+      saveStudent(currentUser.uid, updatedStudent);
+    }
   };
 
   const handleUpdateTopic = async (
@@ -886,6 +896,11 @@ const App: React.FC = () => {
         ? { ...prev, dpssTopics: updatedTopics }
         : { ...prev, selfLearningTopics: updatedTopics };
     });
+
+    if (currentUser?.uid && topicToSave) {
+      const { saveTopic } = await import("./services/firebase");
+      saveTopic(currentUser.uid, topicToSave, category);
+    }
   };
 
   const handleUpdateDailyNote = async (date: string, content: string) => {
@@ -893,6 +908,11 @@ const App: React.FC = () => {
       const newDailyNotes = { ...(prev.dailyNotes || {}), [date]: content };
       return { ...prev, dailyNotes: newDailyNotes };
     });
+
+    if (currentUser?.uid) {
+      const { saveDailyNote } = await import("./services/firebase");
+      saveDailyNote(currentUser.uid, date, content);
+    }
   };
 
   const handleUpdateJournalEntry = async (
@@ -906,6 +926,11 @@ const App: React.FC = () => {
       };
       return { ...prev, journalEntries: newJournalEntries };
     });
+
+    if (currentUser?.uid) {
+      const { saveJournalEntry } = await import("./services/firebase");
+      saveJournalEntry(currentUser.uid, date, entry);
+    }
   };
 
   const handleUpdateHabitCompletion = async (
@@ -913,15 +938,21 @@ const App: React.FC = () => {
     habitId: string,
     completed: boolean | number,
   ) => {
+    let newCompletions: any;
     handleUpdate((prev) => {
       const completions = prev.habitCompletions || {};
       const dayCompletions = {
         ...(completions[date] || {}),
         [habitId]: completed,
       };
-      const newCompletions = { ...completions, [date]: dayCompletions };
+      newCompletions = { ...completions, [date]: dayCompletions };
       return { ...prev, habitCompletions: newCompletions };
     });
+
+    if (currentUser?.uid && newCompletions) {
+      const { saveHabitCompletionBulk } = await import("./services/firebase");
+      saveHabitCompletionBulk(currentUser.uid, date, newCompletions[date]);
+    }
   };
 
   const handleUpdateExpense = async (
@@ -1390,6 +1421,38 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Persistent Sync Status Indicator (Google Docs Style) */}
+      <div className="fixed top-2 right-4 z-[100] no-print pointer-events-none">
+        <AnimatePresence mode="wait">
+          {isSyncing ? (
+            <motion.div
+              key="syncing"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full backdrop-blur-md"
+            >
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                Saving...
+              </span>
+            </motion.div>
+          ) : lastSyncedTime ? (
+            <motion.div
+              key="saved"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 rounded-full backdrop-blur-md"
+            >
+              <Check size={10} className="text-slate-400 dark:text-slate-500" />
+              <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
+                Cloud Synced
+              </span>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
 
       {/* Non-Intrusive Animated Bottom Toast confirmation */}
       <AnimatePresence>

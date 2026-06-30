@@ -136,15 +136,24 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
       const payload = docSnap.data();
       if (payload.isChunked && payload.numChunks > 0) {
          try {
-           let fullString = '';
+           // Fetch all chunks in parallel for much faster sync
+           const chunkPromises = [];
            for (let i = 0; i < payload.numChunks; i++) {
-             const chunkSnap = await getDoc(doc(db, `dps_data/${userId}/chunks`, i.toString()));
-             if (chunkSnap.exists()) {
-               fullString += chunkSnap.data().data;
+             chunkPromises.push(getDoc(doc(db, `dps_data/${userId}/chunks`, i.toString())));
+           }
+           
+           const chunkSnaps = await Promise.all(chunkPromises);
+           let fullString = '';
+           for (const snap of chunkSnaps) {
+             if (snap.exists()) {
+               fullString += snap.data().data;
              }
            }
-           const data = JSON.parse(fullString);
-           onUpdate(data);
+           
+           if (fullString) {
+             const data = JSON.parse(fullString);
+             onUpdate(data);
+           }
          } catch(e) {
            console.error("Error fetching chunked data from Firestore", e);
            if (onError) onError();
@@ -203,8 +212,8 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
   if (!userId || userId === 'unknown') return;
   latestDataState = dataState;
   
-  if (saveTimeout) clearTimeout(saveTimeout);
-  
+  // We remove the internal debounce because App.tsx already debounces.
+  // This makes the sync "immediate" as soon as App.tsx decides to save.
   const performSave = async () => {
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       console.log("Device offline. Queuing data for sync.");
@@ -217,6 +226,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       const dataToSave = latestDataState;
       const dataStr = JSON.stringify(dataToSave);
       const size = dataStr.length;
+      const updatedAt = dataToSave.updatedAt || Date.now();
       
       let payload = {};
       if (size > MAX_FIRESTORE_SIZE) {
@@ -231,31 +241,24 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
 
         payload = {
            folderId: userId,
-           updatedAt: dataToSave.updatedAt || new Date().getTime(),
+           updatedAt: updatedAt,
            version: dataToSave.version || 1,
            numChunks: numChunks,
            isChunked: true
         };
         
-        await Promise.race([
-            batch.commit(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Batch Timeout")), 15000))
-        ]);
+        await batch.commit();
       } else {
         payload = {
            folderId: userId,
-           updatedAt: dataToSave.updatedAt || new Date().getTime(),
+           updatedAt: updatedAt,
            version: dataToSave.version || 1,
            dataStr: dataStr,
            isChunked: false
         };
       }
       
-      await Promise.race([
-          setDoc(doc(db, 'dps_data', userId), payload),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Save Timeout")), 10000))
-      ]);
-      
+      await setDoc(doc(db, 'dps_data', userId), payload);
       lastSyncStatus = true;
     } catch (error) {
       console.error("Firebase exception during save:", error);
@@ -264,11 +267,7 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
     }
   };
 
-  if (instant) {
-    return await performSave();
-  } else {
-    saveTimeout = setTimeout(performSave, 2000);
-  }
+  await performSave();
 };
 
 // Process the sync queue
@@ -283,7 +282,8 @@ export const processSyncQueue = async () => {
   
   const idsToRemove: number[] = [];
   
-  for (const item of queue) {
+  // Process in parallel for speed
+  const syncPromises = queue.map(async (item) => {
     try {
       const dataStr = JSON.stringify(item.data);
       const size = dataStr.length;
@@ -291,9 +291,10 @@ export const processSyncQueue = async () => {
       let payload: any = {};
       if (size > MAX_FIRESTORE_SIZE) {
         const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+        const batch = writeBatch(db);
         for (let i = 0; i < numChunks; i++) {
            const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-           await setDoc(doc(db, `dps_data/${item.userId}/chunks`, i.toString()), { data: chunkStr });
+           batch.set(doc(db, `dps_data/${item.userId}/chunks`, i.toString()), { data: chunkStr });
         }
         payload = {
            folderId: item.userId,
@@ -302,6 +303,7 @@ export const processSyncQueue = async () => {
            numChunks: numChunks,
            isChunked: true
         };
+        await batch.commit();
       } else {
         payload = {
            folderId: item.userId,
@@ -316,9 +318,10 @@ export const processSyncQueue = async () => {
       idsToRemove.push(item.id);
     } catch (e) {
       console.error("Error processing sync queue item:", e);
-      break;
     }
-  }
+  });
+
+  await Promise.all(syncPromises);
   
   if (idsToRemove.length > 0) {
     await localIndexedDB.clearSyncQueue(idsToRemove);
