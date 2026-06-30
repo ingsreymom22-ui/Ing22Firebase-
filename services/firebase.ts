@@ -147,6 +147,33 @@ const fetchDocChunksStandalone = async (collectionPath: string, docId: string, n
   }
 };
 
+// Helper to build tree from flat topics
+const buildTopicTree = (flatTopics: any[]) => {
+  const map = new Map<string, any>();
+  const roots: any[] = [];
+
+  // Initialize map with clones and empty children
+  flatTopics.forEach(t => {
+    map.set(t.id, { ...t, children: t.children || [] });
+  });
+
+  // Build tree
+  flatTopics.forEach(t => {
+    const node = map.get(t.id);
+    if (t.parentId && map.has(t.parentId)) {
+      const parent = map.get(t.parentId);
+      // Avoid duplicates if child already exists
+      if (!parent.children.some((c: any) => c.id === t.id)) {
+        parent.children.push(node);
+      }
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+};
+
 export const subscribeToData = (userId: string, onUpdate: (data: any) => void, onError?: () => void) => {
   let mainDoc: any = null;
   const studentsMap = new Map<string, any>();
@@ -168,10 +195,13 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
       return (a.name || '').localeCompare(b.name || '') || (a.id || '').localeCompare(b.id || '');
     });
     
+    // Reconstruct the tree from flat topicsMap
+    const allFlatTopics = Array.from(topicsMap.values());
+    const reconstructedTree = buildTopicTree(allFlatTopics);
+    
     // Merge Topics: Collection data takes precedence
-    const allTopics = Array.from(topicsMap.values());
-    combined.dpssTopics = allTopics.filter(t => t.category === 'dpss');
-    combined.selfLearningTopics = allTopics.filter(t => t.category === 'selfLearning');
+    combined.dpssTopics = reconstructedTree.filter(t => t.category === 'dpss');
+    combined.selfLearningTopics = reconstructedTree.filter(t => t.category === 'selfLearning');
     
     onUpdate(combined);
   };
@@ -449,32 +479,57 @@ export const deleteFile = async (path: string) => {
 
 export const saveTopic = async (userId: string, topic: any, category: string = 'dpss') => {
   if (!auth.currentUser) return;
-  try {
-    const topicStr = JSON.stringify(topic);
-    const size = topicStr.length;
-    const topicId = topic.id;
-    
-    let payload: any = {
-      category,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    };
+  
+  const saveNode = async (node: any, parentId?: string) => {
+    try {
+      const { children, ...topicData } = node;
+      const topicId = node.id;
+      
+      // Prepare payload (flat structure)
+      let payload: any = {
+        ...topicData,
+        category,
+        owner_id: auth.currentUser!.uid,
+        updated_at: new Date().toISOString(),
+        parentId: parentId || node.parentId || null
+      };
 
-    if (size > MAX_FIRESTORE_SIZE) {
-       const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-       const batch = writeBatch(db);
-       for (let i = 0; i < numChunks; i++) {
-          const chunkStr = topicStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-          batch.set(doc(db, `dps_topics/${topicId}/chunks`, i.toString()), { data: chunkStr });
-       }
-       payload.isChunked = true;
-       payload.numChunks = numChunks;
-       await batch.commit();
-    } else {
-       payload = { ...topic, ...payload, isChunked: false };
+      const topicStr = JSON.stringify(payload);
+      const size = topicStr.length;
+
+      if (size > MAX_FIRESTORE_SIZE) {
+         const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+         const batch = writeBatch(db);
+         for (let i = 0; i < numChunks; i++) {
+            const chunkStr = topicStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+            batch.set(doc(db, `dps_topics/${topicId}/chunks`, i.toString()), { data: chunkStr });
+         }
+         payload.isChunked = true;
+         payload.numChunks = numChunks;
+         // Strip the data fields from the main doc to save space
+         delete payload.content;
+         delete payload.notes;
+         await batch.commit();
+      } else {
+         payload.isChunked = false;
+      }
+
+      await setDoc(doc(db, 'dps_topics', topicId), payload, { merge: true });
+
+      // Recursively save children
+      if (children && children.length > 0) {
+        for (const child of children) {
+          await saveNode(child, topicId);
+        }
+      }
+    } catch (e) {
+      console.error("Error saving node", node.id, e);
+      throw e;
     }
+  };
 
-    await setDoc(doc(db, 'dps_topics', topicId), payload, { merge: true });
+  try {
+    await saveNode(topic);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `dps_topics/${topic.id}`);
   }
@@ -507,6 +562,13 @@ export const deleteTopic = async (userId: string, topicId: string, category: str
   if (!auth.currentUser) return;
   try {
     const docRef = doc(db, 'dps_topics', topicId);
+    
+    // Find all children to delete recursively
+    const q = query(collection(db, 'dps_topics'), where('owner_id', '==', auth.currentUser.uid), where('parentId', '==', topicId));
+    const childrenSnap = await getDocs(q);
+    const deletePromises = childrenSnap.docs.map(childDoc => deleteTopic(userId, childDoc.id, category));
+    await Promise.all(deletePromises);
+
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
