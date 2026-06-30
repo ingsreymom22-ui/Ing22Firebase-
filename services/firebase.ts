@@ -268,23 +268,20 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
       if (change.type === 'removed') {
         topicsMap.delete(change.doc.id);
       } else {
+        // Set basic data immediately to avoid parent-child race conditions while chunks load
+        topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+
         if (data.isChunked && data.numChunks > 0) {
           const p = fetchDocChunksStandalone('dps_topics', change.doc.id, data.numChunks).then(reconstructed => {
             if (reconstructed) {
-              topicsMap.set(change.doc.id, { ...reconstructed, ...data, id: change.doc.id });
-            } else {
-              topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+              const current = topicsMap.get(change.doc.id) || data;
+              topicsMap.set(change.doc.id, { ...reconstructed, ...current, id: change.doc.id });
             }
+            mergeAndEmit();
           });
           chunkPromises.push(p);
-        } else {
-          topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
         }
       }
-    }
-    
-    if (chunkPromises.length > 0) {
-      await Promise.all(chunkPromises);
     }
     
     isTopicsLoaded = true;

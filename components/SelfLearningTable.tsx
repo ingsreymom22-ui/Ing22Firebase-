@@ -335,12 +335,13 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         throw new Error("Invalid format. The JSON must contain a 'title' field.");
       }
       
-      const cloneTopicWithNewIds = (topic: any): any => {
+      const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
         const newId = uuidv4();
         return {
           ...topic,
           id: newId,
-          children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
+          parentId: parentId || null,
+          children: topic.children ? topic.children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
         };
       };
 
