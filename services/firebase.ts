@@ -199,6 +199,9 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
     }
   }, (err) => {
     console.error("Main doc subscribe error:", err);
+    isMainLoaded = true;
+    if (!mainDoc) mainDoc = { students: [], dpssTopics: [], selfLearningTopics: [] };
+    mergeAndEmit();
     if (onError) onError();
   });
 
@@ -216,6 +219,8 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
     mergeAndEmit();
   }, (err) => {
     console.error("Students collection subscribe error:", err);
+    isStudentsLoaded = true;
+    mergeAndEmit();
   });
 
   // 3. Listen to granular topics collection
@@ -232,6 +237,8 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
     mergeAndEmit();
   }, (err) => {
     console.error("Topics collection subscribe error:", err);
+    isTopicsLoaded = true;
+    mergeAndEmit();
   });
 
   return () => {

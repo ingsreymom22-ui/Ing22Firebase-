@@ -475,12 +475,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     ensureTableSpacers(editorRef.current);
     if (inputTimeoutRef.current) clearTimeout(inputTimeoutRef.current);
     inputTimeoutRef.current = setTimeout(() => {
-      if (editorRef.current && selectedTopic) {
+      if (editorRef.current && activeTopic) {
         // Only trigger update if the content has actually changed to avoid unnecessary saves
         const currentHtml = editorRef.current.innerHTML;
         const cleanHtml = getCleanEditorHtml(currentHtml);
-        if (cleanHtml !== selectedTopic.content) {
-          updateTopic(selectedTopic.id, { content: cleanHtml });
+        if (cleanHtml !== activeTopic.content) {
+          updateTopic(activeTopic.id, { content: cleanHtml });
         }
       }
     }, 500);
@@ -1391,7 +1391,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
     return null;
   };
-  const activeTopic = selectedTopicId ? findTopicLocally(data?.dpssTopics || [], selectedTopicId) : null;
   const paperStyle = (activeTopic as any)?.paperStyle || dpssSettings.paperStyle || 'none';
   const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
@@ -1648,8 +1647,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     }
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -1731,8 +1730,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     });
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -1807,8 +1806,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     });
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -1896,8 +1895,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     });
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -1960,8 +1959,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       setActiveTableCell(null);
     }
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -2015,8 +2014,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     });
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -2043,8 +2042,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     }
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -2077,8 +2076,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       cell.style.lineHeight = value;
     }
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -2113,8 +2112,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       cell.style.padding = paddingStr;
     }
 
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -2134,8 +2133,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       document.execCommand('foreColor', false, color);
     }
     
-    if (selectedTopic?.id && editorRef.current) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (activeTopic?.id && editorRef.current) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
     
     // Cleanup
@@ -2162,8 +2161,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       document.execCommand('backColor', false, color);
     }
     
-    if (selectedTopic?.id && editorRef.current) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (activeTopic?.id && editorRef.current) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
     
     // Cleanup
@@ -2543,10 +2542,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const handleShareTopic = (topic: any) => {
-    if (editorRef.current && selectedTopic && String(selectedTopic.id) === String(topic.id)) {
+    if (editorRef.current && activeTopic&& String(activeTopic.id) === String(topic.id)) {
       // Save current screen text immediately into state BEFORE opening slide / share menu
       const updatedTopic = { ...topic, content: editorRef.current.innerHTML };
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       setSharingTopic(updatedTopic);
     } else {
       setSharingTopic(topic);
@@ -2592,23 +2591,23 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const saveAsTemplate = () => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     
     const newTemplate = {
       id: uuidv4(),
-      name: selectedTopic.title || 'New Template',
+      name: activeTopic.title || 'New Template',
       description: 'Saved from my notes',
-      content: selectedTopic.content,
-      customBullets: selectedTopic.customBullets || [],
-      customChecklists: selectedTopic.customChecklists || [],
-      defaultListType: selectedTopic.defaultListType || 'bullet',
-      defaultMarker: selectedTopic.defaultMarker || '•',
+      content: activeTopic.content,
+      customBullets: activeTopic.customBullets || [],
+      customChecklists: activeTopic.customChecklists || [],
+      defaultListType: activeTopic.defaultListType || 'bullet',
+      defaultMarker: activeTopic.defaultMarker || '•',
       themeColor: 'emerald',
       createdAt: new Date().toISOString(),
-      textFontFamily: selectedTopic.textFontFamily,
-      textFontSize: selectedTopic.textFontSize,
-      headerFontFamily: selectedTopic.headerFontFamily,
-      headerFontSize: selectedTopic.headerFontSize
+      textFontFamily: activeTopic.textFontFamily,
+      textFontSize: activeTopic.textFontSize,
+      headerFontFamily: activeTopic.headerFontFamily,
+      headerFontSize: activeTopic.headerFontSize
     };
     
     onUpdate((prev: any) => {
@@ -2692,12 +2691,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     });
   };
 
-  const selectedTopic = selectedTopicId ? findTopic(topics, selectedTopicId) : null;
+  const activeTopic= selectedTopicId ? findTopic(topics, selectedTopicId) : null;
 
   /* Re-implemented handleFileUpload */
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0 || !selectedTopic) return;
+    if (!files || files.length === 0 || !activeTopic) return;
     const file = files[0];
     
     setIsUploading(true);
@@ -2770,14 +2769,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(savedRange.current);
       }
       document.execCommand('insertHTML', false, html);
-      if (selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
     }
   };
 
   const insertDate = () => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const formattedDate = `<span style="color: #f59e0b; font-weight: 800; font-family: sans-serif; display: inline-block;">${dateStr}</span>`;
     
@@ -2819,14 +2818,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const spacing = currentContent.trim().length > 0 ? ' &nbsp; ' : '';
       const newContent = currentContent + spacing + formattedDate;
       editorRef.current.innerHTML = newContent;
-      updateTopic(selectedTopic.id, { content: newContent });
+      updateTopic(activeTopic.id, { content: newContent });
     } else if (editorRef.current) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertSynthesisCard = (theme = 'blue') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       blue: { border: '#bfdbfe', bg: '#f0f7ff', title: '#1d4ed8', desc: '#1e3a8a', inner: '#bfdbfe' },
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#064e3b', inner: '#bbf7d0' },
@@ -2871,12 +2870,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, cardHtml);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertQABoard = (theme = 'slate') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       slate: { border: '#e2e8f0', bg: '#f8fafc', title: '#475569', desc: '#64748b', inner: '#cbd5e1' },
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#059669', inner: '#86efac' },
@@ -2929,12 +2928,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, qaHtml);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertBrainstormCard = (theme = 'violet') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       violet: { border: '#ddd6fe', bg: '#f5f3ff', title: '#6d28d9', desc: '#4c1d95', inner: '#ddd6fe' },
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#064e3b', inner: '#bbf7d0' },
@@ -2988,12 +2987,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, brainstormHtml);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertThreeColumnGrid = (theme = 'emerald') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#064e3b', inner: '#86efac' },
       rose: { border: '#fecdd3', bg: '#fff1f2', title: '#be123c', desc: '#881337', inner: '#fda4af' },
@@ -3051,12 +3050,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, html);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertFourColumnGrid = (theme = 'emerald') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#064e3b', inner: '#86efac' },
       rose: { border: '#fecdd3', bg: '#fff1f2', title: '#be123c', desc: '#881337', inner: '#fda4af' },
@@ -3118,7 +3117,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, html);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -3151,8 +3150,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(savedRange.current);
       }
       document.execCommand('insertHTML', false, html);
-      if (selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
     }
   };
@@ -3205,8 +3204,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(savedRange.current);
       }
       document.execCommand('insertHTML', false, html);
-      if (selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
     }
   };
@@ -3253,8 +3252,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(savedRange.current);
       }
       document.execCommand('insertHTML', false, html);
-      if (selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
     }
   };
@@ -3301,14 +3300,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(savedRange.current);
       }
       document.execCommand('insertHTML', false, html);
-      if (selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
     }
   };
 
   const insertProsConsCard = (theme = 'emerald') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     const configs: Record<string, { border: string; bg: string; title: string; desc: string; inner: string }> = {
       emerald: { border: '#bbf7d0', bg: '#f0fdf4', title: '#047857', desc: '#064e3b', inner: '#86efac' },
       rose: { border: '#fecdd3', bg: '#fff1f2', title: '#be123c', desc: '#881337', inner: '#fda4af' },
@@ -3362,7 +3361,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         selection?.addRange(range);
       }
       document.execCommand('insertHTML', false, prosConsHtml);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -3450,13 +3449,13 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     }
 
-    if (selectedTopic?.id && editorRef.current) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (activeTopic?.id && editorRef.current) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const insertListStyle = (type: 'bullet' | 'number' | 'check', marker?: string) => {
-    if (!editorRef.current || !selectedTopic) return;
+    if (!editorRef.current || !activeTopic) return;
     let html = '';
     
     if (type === 'check') {
@@ -3472,7 +3471,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     
     if (html) {
       document.execCommand('insertHTML', false, html);
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -3605,12 +3604,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
 
     if (editorRef.current) {
-      updateTopic(selectedTopic!.id, { content: editorRef.current.innerHTML });
+      updateTopic(activeTopic!.id, { content: editorRef.current.innerHTML });
     }
   };
 
   const enhanceWithAI = async () => {
-    if (!selectedTopic || isAILoading) return;
+    if (!activeTopic || isAILoading) return;
 
     const selection = window.getSelection();
     let selectedText = '';
@@ -3651,8 +3650,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
     setIsAILoading(true);
     try {
-        let computedFontFamily = selectedTopic?.textFontFamily || textFontFamily;
-        let computedFontSize = selectedTopic?.textFontSize || textFontSize || 16;
+        let computedFontFamily = activeTopic?.textFontFamily || textFontFamily;
+        let computedFontSize = activeTopic?.textFontSize || textFontSize || 16;
         
         if (selection && selection.anchorNode) {
           const parentEl = selection.anchorNode.nodeType === Node.ELEMENT_NODE 
@@ -3672,7 +3671,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         if (isSelectionMode) {
           promptText = `Enhance ONLY this selected part of the note. Improve clarity, fix spelling/grammar, structure cleanly, and expand slightly if helpful. Return the improved version as HTML formatted snippet. Output ONLY valid HTML formatted text without any markdown or code block wrappers. IMPORTANT: Ensure any layout elements use 'w-full' to span the full width. Do NOT use fixed width containers or centered wrappers like 'max-w-md' or 'mx-auto'. APPLY INLINE STYLES: 'font-family: ${computedFontFamily}; font-size: ${typeof computedFontSize === 'number' ? computedFontSize + 'px' : computedFontSize};' to all generated text elements (<p>, <li>, <span>, etc) to preserve the user's selected formatting! Selected text: ${selectedText}`;
         } else {
-          promptText = `Enhance this note. Improve structure, fix grammar, and expand slightly if it helps clarity. Return HTML formatted string only. IMPORTANT: Ensure any layout elements use 'w-full' to span the full width. Do NOT use fixed width containers or centered wrappers like 'max-w-md' or 'mx-auto'. APPLY INLINE STYLES: 'font-family: ${computedFontFamily}; font-size: ${typeof computedFontSize === 'number' ? computedFontSize + 'px' : computedFontSize};' to all generated text elements (<p>, <li>, <span>, etc) to preserve the user's selected formatting! Current content: ${selectedTopic.content}`;
+          promptText = `Enhance this note. Improve structure, fix grammar, and expand slightly if it helps clarity. Return HTML formatted string only. IMPORTANT: Ensure any layout elements use 'w-full' to span the full width. Do NOT use fixed width containers or centered wrappers like 'max-w-md' or 'mx-auto'. APPLY INLINE STYLES: 'font-family: ${computedFontFamily}; font-size: ${typeof computedFontSize === 'number' ? computedFontSize + 'px' : computedFontSize};' to all generated text elements (<p>, <li>, <span>, etc) to preserve the user's selected formatting! Current content: ${activeTopic.content}`;
         }
 
         const result = await callNeuralEngine(
@@ -3689,10 +3688,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           document.execCommand('insertHTML', false, improved);
           
           if (editorRef.current) {
-            updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+            updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
           }
         } else {
-          updateTopic(selectedTopic.id, { content: improved });
+          updateTopic(activeTopic.id, { content: improved });
           if (editorRef.current) {
               editorRef.current.innerHTML = improved;
           }
@@ -3768,9 +3767,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         p.focus();
       }
       
-      if (editorRef.current && selectedTopic) {
+      if (editorRef.current && activeTopic) {
         ensureTableSpacers(editorRef.current);
-        updateTopic(selectedTopic.id, { content: getCleanEditorHtml(editorRef.current.innerHTML) });
+        updateTopic(activeTopic.id, { content: getCleanEditorHtml(editorRef.current.innerHTML) });
       }
       return;
     }
@@ -3811,8 +3810,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         };
         if (toggles[text]) {
             target.innerText = toggles[text];
-            if (selectedTopic?.id && editorRef.current) {
-                updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+            if (activeTopic?.id && editorRef.current) {
+                updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
             }
         }
     }
@@ -3830,8 +3829,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         const next = toggles[text] || toggles[''];
         smartCheckCell.innerText = next.text;
         smartCheckCell.style.color = next.color;
-        if (selectedTopic?.id && editorRef.current) {
-            updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        if (activeTopic?.id && editorRef.current) {
+            updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
         }
     }
   };
@@ -3927,7 +3926,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   selection.removeAllRanges();
                   selection.addRange(newRange);
                   setTimeout(() => {
-                    updateTopic(selectedTopic.id, { content: editorRef.current?.innerHTML || '' });
+                    updateTopic(activeTopic.id, { content: editorRef.current?.innerHTML || '' });
                   }, 10);
                 }
                 return;
@@ -3967,7 +3966,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 editorRef.current?.focus();
                 
                 setTimeout(() => {
-                  updateTopic(selectedTopic.id, { content: editorRef.current?.innerHTML || '' });
+                  updateTopic(activeTopic.id, { content: editorRef.current?.innerHTML || '' });
                 }, 10);
               }
               return;
@@ -4046,8 +4045,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               }, 10);
             }
             
-            if (editorRef.current && selectedTopic) {
-              updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+            if (editorRef.current && activeTopic) {
+              updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
             }
           }
         }
@@ -4084,8 +4083,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 }
               }, 10);
               
-              if (editorRef.current && selectedTopic) {
-                updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+              if (editorRef.current && activeTopic) {
+                updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
               }
             }
           }
@@ -4120,8 +4119,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   boxEl.focus();
                 }
               }, 10);
-              if (editorRef.current && selectedTopic) {
-                updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+              if (editorRef.current && activeTopic) {
+                updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
               }
             }
           }
@@ -4172,8 +4171,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                      }
                    }, 10);
                    
-                   if (editorRef.current && selectedTopic) {
-                     updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+                   if (editorRef.current && activeTopic) {
+                     updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
                    }
                  }
                }
@@ -4272,8 +4271,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         sel.removeAllRanges();
         sel.addRange(newRange);
         
-        if (editorRef.current && selectedTopic) {
-          updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        if (editorRef.current && activeTopic) {
+          updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
         }
         return;
       }
@@ -4293,8 +4292,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         sel.removeAllRanges();
         sel.addRange(newRange);
         
-        if (editorRef.current && selectedTopic) {
-          updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        if (editorRef.current && activeTopic) {
+          updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
         }
         return;
       }
@@ -4410,8 +4409,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         sel.addRange(newRange);
       }
 
-      if (editorRef.current && selectedTopic) {
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      if (editorRef.current && activeTopic) {
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
       }
       return;
     }
@@ -4426,8 +4425,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     sel.removeAllRanges();
     sel.addRange(newRange);
     
-    if (editorRef.current && selectedTopic) {
-      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    if (editorRef.current && activeTopic) {
+      updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -4521,8 +4520,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         window.removeEventListener('mousemove', handleGlobalMouseMove);
         window.removeEventListener('mouseup', handleGlobalMouseUp);
         
-        if (editorRef.current && selectedTopic) {
-          updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        if (editorRef.current && activeTopic) {
+          updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
         }
       };
       
@@ -4599,8 +4598,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           window.removeEventListener('touchmove', handleGlobalTouchMove);
           window.removeEventListener('touchend', handleGlobalTouchEnd);
           
-          if (editorRef.current && selectedTopic) {
-            updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+          if (editorRef.current && activeTopic) {
+            updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
           }
         };
 
@@ -4611,7 +4610,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const generateEditorPlan = async (type: 'action' | 'study') => {
-    if (!selectedTopic) return;
+    if (!activeTopic) return;
     if (isEditorActionPlanLoading || isEditorStudyPlanLoading) return;
 
     let selectedText = '';
@@ -4681,12 +4680,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       htmlOutput = `<div class="mb-4 text-center"><h2 class="text-2xl font-black text-slate-800 tracking-tight">${planTitle}</h2></div>` + htmlOutput;
 
       // Append to the editor
-      if (editorRef.current && selectedTopic) {
+      if (editorRef.current && activeTopic) {
         let currentHTML = editorRef.current.innerHTML;
         const divider = '<div class="my-8 h-px bg-slate-200/60 w-full" contenteditable="false" data-separator="true"></div><br/>';
         
         editorRef.current.innerHTML = currentHTML + divider + htmlOutput;
-        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML }); // Trigger auto save
+        updateTopic(activeTopic.id, { content: editorRef.current.innerHTML }); // Trigger auto save
         
         // Scroll to the bottom
         setTimeout(() => {
@@ -5082,8 +5081,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   useEffect(() => {
-    if (editorRef.current && selectedTopic) {
-      let content = selectedTopic.content || '';
+    if (editorRef.current && activeTopic) {
+      let content = activeTopic.content || '';
       // Dynamically strip narrow constraints from old generated text so they span full width
       content = content.replace(/max-width:\s*\d+(px|rem|em|vw|%)/gi, 'max-width: 100%');
       content = content.replace(/width:\s*\d+(px|rem|em)(?![^;]*%!important)/gi, 'width: 100%');
@@ -5098,7 +5097,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         }
       }
     }
-  }, [selectedTopic?.id, selectedTopic?.content]);
+  }, [activeTopic?.id, activeTopic?.content]);
 
   return (
     <div className="flex flex-col md:flex-row h-full md:h-full w-full p-0 gap-0 overflow-hidden relative">
@@ -5352,12 +5351,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             <Menu size={16} />
           </button>
         )}
-        {selectedTopic ? (
+        {activeTopic ? (
             <div className="space-y-4 h-full flex flex-col relative pt-12 md:pt-14">
                 <div className="flex items-center gap-2 px-1 min-h-12 absolute -top-1 md:top-2 left-24 md:left-[80px] right-0 z-[200]">
                   <input 
-                      value={selectedTopic.title} 
-                      onChange={(e) => updateTopic(selectedTopic.id, { title: e.target.value })}
+                      value={activeTopic.title} 
+                      onChange={(e) => updateTopic(activeTopic.id, { title: e.target.value })}
                       className={`flex-1 text-xl md:text-3xl font-black text-slate-900 border-slate-300 bg-white/40 backdrop-blur-sm shadow-sm drop-shadow-sm outline-none px-3 py-1.5 border-b-2 focus:border-orange-500 focus:text-slate-900 focus:bg-white focus:shadow-md transition-all font-sans min-w-0 text-center uppercase tracking-wide rounded-t-xl`}
                       placeholder="Topic Title..."
                   />
@@ -5483,8 +5482,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                                 }
                               });
                               
-                              if (editorRef.current && selectedTopic) {
-                                updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+                              if (editorRef.current && activeTopic) {
+                                updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
                               }
                               const el = document.activeElement as HTMLElement;
                               el?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -5531,8 +5530,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                                   tag.parentNode?.replaceChild(span, tag);
                               });
                               
-                              if (editorRef.current && selectedTopic) {
-                                updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+                              if (editorRef.current && activeTopic) {
+                                updateTopic(activeTopic.id, { content: editorRef.current.innerHTML });
                               }
                               const el = document.activeElement as HTMLElement;
                               el?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -5556,8 +5555,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       </div>
 
                       <select 
-                        value={selectedTopic.paperStyle || 'none'}
-                        onChange={(e) => updateTopic(selectedTopic.id, { paperStyle: e.target.value })}
+                        value={activeTopic.paperStyle || 'none'}
+                        onChange={(e) => updateTopic(activeTopic.id, { paperStyle: e.target.value })}
                         className="bg-white/40 px-2 py-1.5 rounded-lg text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-white/60 transition-colors uppercase min-w-[140px]"
                         title="Topic Paper Style"
                       >
@@ -5613,13 +5612,13 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                             />
                           </label>
 
-                          {selectedTopic && (
+                          {activeTopic && (
                             <button 
-                              onClick={() => { handleShareTopic(selectedTopic); setShowPageOptions(false); }}
-                              disabled={sharingTopicId === selectedTopic.id}
+                              onClick={() => { handleShareTopic(activeTopic); setShowPageOptions(false); }}
+                              disabled={sharingTopicId === activeTopic.id}
                               className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded-xl text-slate-700 transition-colors w-full"
                             >
-                              <Share2 size={14} className={`text-orange-500 ${sharingTopicId === selectedTopic.id ? "animate-spin" : ""}`} />
+                              <Share2 size={14} className={`text-orange-500 ${sharingTopicId === activeTopic.id ? "animate-spin" : ""}`} />
                               <span className="text-xs font-bold">Share Topic</span>
                             </button>
                           )}
@@ -6588,10 +6587,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   const editorBorderColor = '#cbd5e1';
                   const editorCardBgColor = forceLightBg ? '#ffffff' : 'rgba(255, 255, 255, 0.95)';
                   
-                  const activeTextFontFamily = selectedTopic?.textFontFamily || textFontFamily;
-                  const activeTextFontSize = selectedTopic?.textFontSize || textFontSize;
-                  const activeHeaderFontFamily = selectedTopic?.headerFontFamily || 'Space Grotesk';
-                  const activeHeaderFontSize = selectedTopic?.headerFontSize || 20;
+                  const activeTextFontFamily = activeTopic?.textFontFamily || textFontFamily;
+                  const activeTextFontSize = activeTopic?.textFontSize || textFontSize;
+                  const activeHeaderFontFamily = activeTopic?.headerFontFamily || 'Space Grotesk';
+                  const activeHeaderFontSize = activeTopic?.headerFontSize || 20;
 
                   return (
                     <style dangerouslySetInnerHTML={{ __html: `
@@ -6797,7 +6796,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
                       .editor-content .three-col-wrapper > div:nth-child(3),
                       .editor-content .four-col-wrapper > div:nth-child(3) {
-                        gap: ${selectedTopic?.gridSpacing ?? 12}px !important;
+                        gap: ${activeTopic?.gridSpacing ?? 12}px !important;
                       }
 
                       .editor-content .study-plan-card h1,
@@ -6995,7 +6994,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       onMouseDown={handleEditorMouseDown}
                       onTouchStart={handleEditorTouchStart}
                       onBlur={(e) => {
-                        updateTopic(selectedTopic.id, { content: e.currentTarget.innerHTML });
+                        updateTopic(activeTopic.id, { content: e.currentTarget.innerHTML });
                       }}
                       className={`editor-content w-full flex-1 outline-none rounded-3xl leading-relaxed font-medium transition-all focus:ring-4 focus:ring-orange-500/10 shadow-md ${
                         forceLightBg
@@ -7004,8 +7003,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       }`}
                       style={{ 
                         minHeight: '300px',
-                        fontSize: `${selectedTopic?.textFontSize || textFontSize}px`,
-                        fontFamily: selectedTopic?.textFontFamily || textFontFamily,
+                        fontSize: `${activeTopic?.textFontSize || textFontSize}px`,
+                        fontFamily: activeTopic?.textFontFamily || textFontFamily,
                         padding: '0.2in 0.2in 0.3in 0.2in'
                       }}
                   ></div>
@@ -7420,7 +7419,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                      return null;
                   };
                   
-                  const targetTopic = findNode(topics, selectedTopic?.id || sharingTopicId || '');
+                  const targetTopic = findNode(topics, activeTopic?.id || sharingTopicId || '');
                   
                   if (targetTopic) {
                     const blob = new Blob([JSON.stringify(targetTopic, null, 2)], { type: 'application/json' });
