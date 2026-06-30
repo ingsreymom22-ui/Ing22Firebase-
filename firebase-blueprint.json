@@ -43,6 +43,16 @@
     "/dps_backups/{backupId}": {
       "schema": "AppData",
       "description": "Historical backups of user data"
+    },
+    "/dps_students/{studentId}": {
+      "owner_id": "string",
+      "updated_at": "string",
+      "data": "any"
+    },
+    "/dps_topics/{topicId}": {
+      "owner_id": "string",
+      "updated_at": "string",
+      "data": "any"
     }
   }
 }

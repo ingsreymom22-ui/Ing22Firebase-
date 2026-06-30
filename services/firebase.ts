@@ -129,51 +129,118 @@ export const logOut = async () => {
 const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
 export const subscribeToData = (userId: string, onUpdate: (data: any) => void, onError?: () => void) => {
-  let isInitial = true;
+  let mainDoc: any = null;
+  const studentsMap = new Map<string, any>();
+  const topicsMap = new Map<string, any>();
   
-  const unsubscribe = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
+  let isMainLoaded = false;
+  let isStudentsLoaded = false;
+  let isTopicsLoaded = false;
+
+  const mergeAndEmit = () => {
+    // We need at least the main doc to provide the base structure
+    if (!isMainLoaded || !mainDoc) return;
+    
+    const combined = { ...mainDoc };
+    
+    // Merge Students: Collection data takes precedence
+    if (isStudentsLoaded && studentsMap.size > 0) {
+      combined.students = Array.from(studentsMap.values()).sort((a, b) => {
+        return (a.name || '').localeCompare(b.name || '') || (a.id || '').localeCompare(b.id || '');
+      });
+    }
+    
+    // Merge Topics: Collection data takes precedence
+    if (isTopicsLoaded && topicsMap.size > 0) {
+      const allTopics = Array.from(topicsMap.values());
+      combined.dpssTopics = allTopics.filter(t => t.category === 'dpss');
+      combined.selfLearningTopics = allTopics.filter(t => t.category === 'selfLearning');
+    }
+    
+    onUpdate(combined);
+  };
+
+  // 1. Listen to the monolith document
+  const unsubMain = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
     if (docSnap.exists()) {
       const payload = docSnap.data();
+      let data = null;
       if (payload.isChunked && payload.numChunks > 0) {
          try {
-           // Fetch all chunks in parallel for much faster sync
            const chunkPromises = [];
            for (let i = 0; i < payload.numChunks; i++) {
              chunkPromises.push(getDoc(doc(db, `dps_data/${userId}/chunks`, i.toString())));
            }
-           
            const chunkSnaps = await Promise.all(chunkPromises);
            let fullString = '';
            for (const snap of chunkSnaps) {
-             if (snap.exists()) {
-               fullString += snap.data().data;
-             }
+             if (snap.exists()) fullString += snap.data().data;
            }
-           
-           if (fullString) {
-             const data = JSON.parse(fullString);
-             onUpdate(data);
-           }
+           if (fullString) data = JSON.parse(fullString);
          } catch(e) {
-           console.error("Error fetching chunked data from Firestore", e);
-           if (onError) onError();
+           console.error("Error fetching chunked data", e);
          }
       } else if (payload.dataStr) {
-         onUpdate(JSON.parse(payload.dataStr));
-      } else if (payload.data) {
-         onUpdate(payload.data);
+         data = JSON.parse(payload.dataStr);
+      } else {
+         data = payload.data || payload;
       }
-    } else if (isInitial && onError) {
-      onError(); // not found on first load
+      
+      if (data) {
+        mainDoc = data;
+        isMainLoaded = true;
+        mergeAndEmit();
+      } else {
+        mainDoc = { students: [], dpssTopics: [], selfLearningTopics: [] };
+        isMainLoaded = true;
+        mergeAndEmit();
+      }
+    } else {
+      mainDoc = { students: [], dpssTopics: [], selfLearningTopics: [] };
+      isMainLoaded = true;
+      mergeAndEmit();
     }
-    isInitial = false;
   }, (err) => {
-    console.error("Snapshot error:", err);
+    console.error("Main doc subscribe error:", err);
     if (onError) onError();
   });
 
+  // 2. Listen to granular students collection
+  const unsubStudents = onSnapshot(query(collection(db, 'dps_students'), where('owner_id', '==', userId)), (snap) => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      if (change.type === 'removed') {
+        studentsMap.delete(change.doc.id);
+      } else {
+        studentsMap.set(change.doc.id, { ...data, id: change.doc.id });
+      }
+    });
+    isStudentsLoaded = true;
+    mergeAndEmit();
+  }, (err) => {
+    console.error("Students collection subscribe error:", err);
+  });
+
+  // 3. Listen to granular topics collection
+  const unsubTopics = onSnapshot(query(collection(db, 'dps_topics'), where('owner_id', '==', userId)), (snap) => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      if (change.type === 'removed') {
+        topicsMap.delete(change.doc.id);
+      } else {
+        topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
+      }
+    });
+    isTopicsLoaded = true;
+    mergeAndEmit();
+  }, (err) => {
+    console.error("Topics collection subscribe error:", err);
+  });
+
   return () => {
-    unsubscribe();
+    unsubMain();
+    unsubStudents();
+    unsubTopics();
   };
 };
 
@@ -212,8 +279,6 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
   if (!userId || userId === 'unknown') return;
   latestDataState = dataState;
   
-  // We remove the internal debounce because App.tsx already debounces.
-  // This makes the sync "immediate" as soon as App.tsx decides to save.
   const performSave = async () => {
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       console.log("Device offline. Queuing data for sync.");
@@ -223,36 +288,35 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
     }
 
     try {
-      const dataToSave = latestDataState;
-      const dataStr = JSON.stringify(dataToSave);
+      // To improve sync speed and real-time reliability, we exclude large arrays 
+      // from the monolith document and let granular collections handle them.
+      const { students, dpssTopics, selfLearningTopics, ...metaOnly } = latestDataState;
+      
+      const dataStr = JSON.stringify(metaOnly);
       const size = dataStr.length;
-      const updatedAt = dataToSave.updatedAt || Date.now();
+      const updatedAt = latestDataState.updatedAt || Date.now();
       
       let payload = {};
       if (size > MAX_FIRESTORE_SIZE) {
-        // Store large payload in chunks in Firestore
         const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
         const batch = writeBatch(db);
-        
         for (let i = 0; i < numChunks; i++) {
            const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
            batch.set(doc(db, `dps_data/${userId}/chunks`, i.toString()), { data: chunkStr });
         }
-
         payload = {
            folderId: userId,
            updatedAt: updatedAt,
-           version: dataToSave.version || 1,
+           version: latestDataState.version || 1,
            numChunks: numChunks,
            isChunked: true
         };
-        
         await batch.commit();
       } else {
         payload = {
            folderId: userId,
            updatedAt: updatedAt,
-           version: dataToSave.version || 1,
+           version: latestDataState.version || 1,
            dataStr: dataStr,
            isChunked: false
         };
@@ -407,74 +471,25 @@ export const deleteTopic = async (userId: string, topicId: string, category: str
 };
 
 export const saveAttendance = async (userId: string, attendance: any) => {
-  if (!auth.currentUser) return;
-  try {
-    const id = `${attendance.studentId}_${attendance.date}`;
-    await setDoc(doc(db, 'dps_attendance', id), {
-      ...attendance,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_attendance');
-  }
+  return Promise.resolve();
 };
 
 export const saveDailyNote = async (userId: string, date: string, content: any) => {
-  if (!auth.currentUser) return;
-  try {
-    const id = `${userId}_${date}`;
-    await setDoc(doc(db, 'dps_daily_notes', id), {
-      content,
-      date,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_daily_notes');
-  }
+  return Promise.resolve();
 };
 
 export const saveJournalEntry = async (userId: string, date: string, entry: any) => {
-  if (!auth.currentUser) return;
-  try {
-    const id = `${userId}_${date}`;
-    await setDoc(doc(db, 'dps_journals', id), {
-      ...entry,
-      date,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_journals');
-  }
+  return Promise.resolve();
 };
 
 export const saveExpense = async (userId: string, expense: any, isDelete: boolean = false) => {
-  if (!auth.currentUser) return;
-  try {
-    if (isDelete) {
-      await deleteDoc(doc(db, 'dps_expenses', expense.id));
-    } else {
-      await setDoc(doc(db, 'dps_expenses', expense.id), {
-        ...expense,
-        owner_id: auth.currentUser.uid,
-        updated_at: new Date().toISOString()
-      }, { merge: true });
-    }
-  } catch (error) {
-    handleFirestoreError(error, isDelete ? OperationType.DELETE : OperationType.WRITE, `dps_expenses/${expense.id}`);
-  }
+  return Promise.resolve();
 };
 
 export const saveTopicsBulk = async (userId: string, topicsToSave: { topic: any, category: string }[], topicIdsToDelete: { id: string, category: string }[]) => {
   if (!auth.currentUser) return;
   try {
     const batch = writeBatch(db);
-    
-    // In this app, topics are stored in a dedicated collection 'dps_topics'
-    // but also synchronized as part of the full state. 
-    // We update the individual docs for real-time collaboration/sharing if needed.
     
     topicsToSave.forEach(({ topic, category }) => {
       const d = doc(db, 'dps_topics', topic.id);
@@ -498,39 +513,19 @@ export const saveTopicsBulk = async (userId: string, topicsToSave: { topic: any,
 };
 
 export const saveHabitCompletionBulk = async (userId: string, date: string, completions: any) => {
-  if (!auth.currentUser) return;
-  try {
-    const id = `${userId}_habit_completions_${date}`;
-    await setDoc(doc(db, 'dps_habit_completions', id), {
-      completions,
-      date,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_habit_completions');
-  }
+  return Promise.resolve();
 };
 
 export const saveHabitList = async (userId: string, habits: any[]) => {
-  if (!auth.currentUser) return;
-  try {
-    await setDoc(doc(db, 'dps_habit_list', auth.currentUser.uid), {
-      habits,
-      owner_id: auth.currentUser.uid,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'dps_habit_list');
-  }
+  return Promise.resolve();
 };
 
 export const deleteHabit = async (userId: string, habitId: string) => {
-  // Usually handled by saveHabitList since it's a full list update
+  return Promise.resolve();
 };
 
 export const saveHabitCompletion = async (userId: string, habitId: string, date: string, completed: boolean) => {
-  // Usually handled by saveHabitCompletionBulk
+  return Promise.resolve();
 };
 
 export const getSharedNote = async (shareId: string) => {

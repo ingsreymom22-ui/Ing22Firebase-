@@ -343,12 +343,17 @@ const App: React.FC = () => {
   // Supabase Global Auto-Sync Hook
   useEffect(() => {
     if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
+      // If we are already syncing, the completion of that sync (via isSyncing changing back to false)
+      // will re-trigger this effect, so we don't need to schedule another one yet.
+      if (isSyncingRef.current) return;
+      
       // Only sync if the updatedAt has actually increased or we haven't synced this version yet
       if (data.updatedAt <= lastSyncedUpdatedAtRef.current) return;
       
       const timer = setTimeout(async () => {
         // Double check after debounce
         if (currentDataRef.current.updatedAt <= lastSyncedUpdatedAtRef.current) return;
+        if (isSyncingRef.current) return;
         
         const dataToSave = currentDataRef.current;
         const dataStr = JSON.stringify(dataToSave);
@@ -380,7 +385,7 @@ const App: React.FC = () => {
       }, 500); // Back to 500ms for "Google Docs" live feel, but with optimized Firestore parallel chunking
       return () => clearTimeout(timer);
     }
-  }, [data?.updatedAt, currentUser?.uid, loading]);
+  }, [data?.updatedAt, currentUser?.uid, loading, isSyncing]);
 
   // No auto-seeding of named tasks per user request for a blank/clean start
   useEffect(() => {
@@ -645,24 +650,26 @@ const App: React.FC = () => {
     }
     setLoading(true);
     
-    // Add a safety timeout for loading
+    // Add a safety timeout for loading (increased to 15s for large data/multiple collections)
     const loadTimeout = setTimeout(() => {
       if (loading) {
         console.warn("Cloud load timed out. Falling back to local storage.");
         setLoading(false);
-        isCloudLoadedRef.current = true; // Allow local saves to cloud if cloud is unreachable
+        isCloudLoadedRef.current = true;
       }
-    }, 3000);
+    }, 15000);
 
     const unsubscribe = subscribeToData(
       uid,
       (newData) => {
         clearTimeout(loadTimeout);
         const isFirstLoad = !isCloudLoadedRef.current;
-        isCloudLoadedRef.current = true;
-        setLoading(false);
         
-        if (!newData) return;
+        if (!newData) {
+           setLoading(false);
+           isCloudLoadedRef.current = true;
+           return;
+        }
 
         const incomingStr = JSON.stringify(newData);
         const currentData = currentDataRef.current;
@@ -672,11 +679,15 @@ const App: React.FC = () => {
         if (currentDataStr === incomingStr) {
           previousDataSyncRef.current = incomingStr;
           lastSyncedUpdatedAtRef.current = newData.updatedAt || 0;
+          isCloudLoadedRef.current = true;
+          setLoading(false);
           return;
         }
 
         // 2. Echo block: if this is exactly what we just saved, ignore
         if (previousDataSyncRef.current === incomingStr) {
+          isCloudLoadedRef.current = true;
+          setLoading(false);
           return;
         }
 
@@ -687,16 +698,13 @@ const App: React.FC = () => {
         // On initial load, we always accept the cloud data
         if (!isFirstLoad) {
           // If incoming data is NOT strictly newer, ignore it.
-          // This prevents older device states from overwriting newer ones.
-          if (incomingUpdatedAt <= currentUpdatedAt) {
+          if (incomingUpdatedAt <= currentUpdatedAt && currentUpdatedAt !== 0) {
             return;
           }
           
           // Protection during active editing
           const timeSinceLastLocalUpdate = Date.now() - lastLocalUpdateRef.current;
-          if (timeSinceLastLocalUpdate < 1500 && incomingUpdatedAt < Date.now() - 500) {
-             // If we just edited locally, and the server data isn't "very fresh" (i.e. it might be a delayed echo or older sync)
-             // we defer to our local state to avoid "jumping" while typing.
+          if (timeSinceLastLocalUpdate < 2000 && incomingUpdatedAt < lastLocalUpdateRef.current - 500) {
              return;
           }
         }
@@ -749,12 +757,14 @@ const App: React.FC = () => {
         lastScheduledDataStrRef.current = finalStr;
         lastSyncedUpdatedAtRef.current = newData.updatedAt || 0;
         setLastSyncedTime(Date.now());
+        isCloudLoadedRef.current = true;
         setInternalData(newData);
-        storage.setItem("dps_data", JSON.stringify(newData)); // SYNC to storage
+        storage.setItem("dps_data", finalStr);
         setLoading(false);
       },
       () => {
-        isCloudLoadedRef.current = true; // Still mark as loaded to allow local mode push if empty
+        clearTimeout(loadTimeout);
+        isCloudLoadedRef.current = true;
         setLoading(false);
       },
     );
