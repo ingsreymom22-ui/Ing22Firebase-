@@ -1391,6 +1391,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
     return null;
   };
+  const activeTopic = selectedTopicId ? findTopicLocally(data?.dpssTopics || [], selectedTopicId) : null;
   const paperStyle = (activeTopic as any)?.paperStyle || dpssSettings.paperStyle || 'none';
   const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
@@ -2690,8 +2691,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       }
     });
   };
-
-  const activeTopic= selectedTopicId ? findTopic(topics, selectedTopicId) : null;
 
   /* Re-implemented handleFileUpload */
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
