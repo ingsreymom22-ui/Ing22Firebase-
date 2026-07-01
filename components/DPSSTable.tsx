@@ -2245,18 +2245,23 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const duplicateTopic = (id: string) => {
-    const cloneNode = (node: DPSSTopic): DPSSTopic => {
+    const cloneNode = (node: DPSSTopic, parentId?: string): DPSSTopic => {
+      const newId = uuidv4();
+      const { id: oldId, parentId: oldParent, children, ...rest } = node;
       return {
-        ...node,
-        id: uuidv4(),
-        children: node.children ? node.children.map(cloneNode) : undefined
+        ...rest,
+        id: newId,
+        parentId: parentId || null,
+        children: children ? children.map(c => cloneNode(c, newId)) : undefined
       };
     };
 
     const targetTopic = findTopic(data.dpssTopics || [], id);
     if (!targetTopic) return;
     
-    const cloned = cloneNode(targetTopic);
+    // For the root of the clone, the parentId should match the original's parentId
+    const originalParentId = getParentId(data.dpssTopics || [], id);
+    const cloned = cloneNode(targetTopic, originalParentId);
     cloned.title = `${cloned.title} - Copy`;
 
     const updateTopics = (items: DPSSTopic[]): DPSSTopic[] => {
@@ -2648,12 +2653,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     };
     const updatedDpssTopics = markDeleted(data.dpssTopics || []);
 
-    const cloneTopicWithNewIds = (topic: any): any => {
+    const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
       const newId = uuidv4();
+      const { id: oldId, parentId: oldParent, children, deletedAt, deleted, ...rest } = topic;
       return {
-        ...topic,
+        ...rest,
         id: newId,
-        children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
+        parentId: parentId || null,
+        children: children ? children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
       };
     };
     const clonedTopic = cloneTopicWithNewIds(topicToMove);

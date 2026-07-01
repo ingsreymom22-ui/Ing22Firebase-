@@ -124,6 +124,7 @@ export interface ContentBlock {
 
 export interface DPSSTopic {
   id: string;
+  parentId?: string | null;
   title: string;
   content: string;
   alignment: 'left' | 'center' | 'right';
