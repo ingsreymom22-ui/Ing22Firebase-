@@ -182,14 +182,20 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   let mainDoc: any = null;
   const studentsMap = new Map<string, any>();
   const topicsMap = new Map<string, any>();
+  const dailyNotesMap = new Map<string, string>();
+  const journalMap = new Map<string, any>();
+  const expensesMap = new Map<string, any>();
   
   let isMainLoaded = false;
   let isStudentsLoaded = false;
   let isTopicsLoaded = false;
+  let isDailyNotesLoaded = false;
+  let isJournalLoaded = false;
+  let isExpensesLoaded = false;
 
   const mergeAndEmit = () => {
-    // Only emit when ALL three initial snapshots have successfully loaded
-    if (!isMainLoaded || !isStudentsLoaded || !isTopicsLoaded) return;
+    // Only emit when ALL initial snapshots have successfully loaded
+    if (!isMainLoaded || !isStudentsLoaded || !isTopicsLoaded || !isDailyNotesLoaded || !isJournalLoaded || !isExpensesLoaded) return;
     if (!mainDoc) return;
     
     const combined = { ...mainDoc };
@@ -206,6 +212,21 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
     // Merge Topics: Collection data takes precedence
     combined.dpssTopics = reconstructedTree.filter(t => t.category === 'dpss');
     combined.selfLearningTopics = reconstructedTree.filter(t => t.category === 'selfLearning');
+
+    // Merge Daily Notes
+    combined.dailyNotes = { ...combined.dailyNotes };
+    dailyNotesMap.forEach((content, date) => {
+      combined.dailyNotes[date] = content;
+    });
+
+    // Merge Journal
+    combined.journalEntries = { ...combined.journalEntries };
+    journalMap.forEach((entry, date) => {
+      combined.journalEntries[date] = entry;
+    });
+
+    // Merge Expenses
+    combined.expenses = Array.from(expensesMap.values());
     
     onUpdate(combined);
   };
@@ -296,10 +317,65 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
     mergeAndEmit();
   });
 
+  // 4. Listen to daily notes
+  const unsubDailyNotes = onSnapshot(query(collection(db, 'dps_daily_notes'), where('owner_id', '==', userId)), (snap) => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      if (change.type === 'removed') {
+        dailyNotesMap.delete(data.date);
+      } else {
+        dailyNotesMap.set(data.date, data.content);
+      }
+    });
+    isDailyNotesLoaded = true;
+    mergeAndEmit();
+  }, (err) => {
+    isDailyNotesLoaded = true;
+    mergeAndEmit();
+  });
+
+  // 5. Listen to journal entries
+  const unsubJournal = onSnapshot(query(collection(db, 'dps_journal'), where('owner_id', '==', userId)), (snap) => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      if (change.type === 'removed') {
+        journalMap.delete(data.date);
+      } else {
+        const { owner_id, updated_at, ...entry } = data;
+        journalMap.set(data.date, entry);
+      }
+    });
+    isJournalLoaded = true;
+    mergeAndEmit();
+  }, (err) => {
+    isJournalLoaded = true;
+    mergeAndEmit();
+  });
+
+  // 6. Listen to expenses
+  const unsubExpenses = onSnapshot(query(collection(db, 'dps_expenses'), where('owner_id', '==', userId)), (snap) => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      if (change.type === 'removed') {
+        expensesMap.delete(change.doc.id);
+      } else {
+        expensesMap.set(change.doc.id, { ...data, id: change.doc.id });
+      }
+    });
+    isExpensesLoaded = true;
+    mergeAndEmit();
+  }, (err) => {
+    isExpensesLoaded = true;
+    mergeAndEmit();
+  });
+
   return () => {
     unsubMain();
     unsubStudents();
     unsubTopics();
+    unsubDailyNotes();
+    unsubJournal();
+    unsubExpenses();
   };
 };
 
@@ -588,19 +664,64 @@ export const deleteTopic = async (userId: string, topicId: string, category: str
 };
 
 export const saveAttendance = async (userId: string, attendance: any) => {
-  return Promise.resolve();
+  if (!auth.currentUser) return;
+  try {
+    // Attendance is often a deep object, we might save it as a monolith for now or split by month
+    await setDoc(doc(db, 'dps_attendance', userId), { 
+      data: attendance, 
+      owner_id: userId,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+  } catch (error) {
+    console.error("Save attendance error:", error);
+  }
 };
 
 export const saveDailyNote = async (userId: string, date: string, content: any) => {
-  return Promise.resolve();
+  if (!auth.currentUser) return;
+  try {
+    const noteId = `${userId}_${date}`;
+    await setDoc(doc(db, 'dps_daily_notes', noteId), {
+      content,
+      date,
+      owner_id: userId,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+  } catch (error) {
+    console.error("Save daily note error:", error);
+  }
 };
 
 export const saveJournalEntry = async (userId: string, date: string, entry: any) => {
-  return Promise.resolve();
+  if (!auth.currentUser) return;
+  try {
+    const entryId = `${userId}_${date}`;
+    await setDoc(doc(db, 'dps_journal', entryId), {
+      ...entry,
+      date,
+      owner_id: userId,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+  } catch (error) {
+    console.error("Save journal entry error:", error);
+  }
 };
 
 export const saveExpense = async (userId: string, expense: any, isDelete: boolean = false) => {
-  return Promise.resolve();
+  if (!auth.currentUser) return;
+  try {
+    if (isDelete) {
+      await deleteDoc(doc(db, 'dps_expenses', expense.id));
+    } else {
+      await setDoc(doc(db, 'dps_expenses', expense.id), {
+        ...expense,
+        owner_id: userId,
+        updated_at: new Date().toISOString()
+      }, { merge: true });
+    }
+  } catch (error) {
+    console.error("Save expense error:", error);
+  }
 };
 
 export const saveTopicsBulk = async (userId: string, topicsToSave: { topic: any, category: string }[], topicIdsToDelete: { id: string, category: string }[]) => {

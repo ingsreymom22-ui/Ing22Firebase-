@@ -337,8 +337,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       
       const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
         const newId = uuidv4();
+        const { id, parentId: oldParentId, deletedAt, deleted, isArchived, ...rest } = topic;
         return {
-          ...topic,
+          ...rest,
           id: newId,
           parentId: parentId || null,
           children: topic.children ? topic.children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined

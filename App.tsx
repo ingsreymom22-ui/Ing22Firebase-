@@ -457,14 +457,14 @@ const App: React.FC = () => {
     const { type, payload } = sharedNoteData;
 
     if (type === "self-learning" || type === "note-taking" || type === "dpss") {
-      const cloneTopicWithNewIds = (topic: any): any => {
+      const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
         const newId = uuidv4();
+        const { id, parentId: oldParentId, deletedAt, deleted, isArchived, ...rest } = topic;
         return {
-          ...topic,
+          ...rest,
           id: newId,
-          children: topic.children
-            ? topic.children.map(cloneTopicWithNewIds)
-            : undefined,
+          parentId: parentId || null,
+          children: topic.children ? topic.children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
         };
       };
 
