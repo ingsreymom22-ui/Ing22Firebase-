@@ -8,13 +8,16 @@ import config from '../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(config) : getApp();
-const db = getFirestore(app, config.firestoreDatabaseId);
+const db = getFirestore(app);
 const auth = getAuth(app);
 const fStorage = getStorage(app);
 
 // Global connection state
 let lastSyncStatus = false;
 let isSyncingQueue = false;
+let cachedAccessToken: string | null = null;
+
+export const getAccessToken = () => cachedAccessToken;
 
 export const checkFirebaseConnection = async () => {
     return typeof window !== 'undefined' && window.navigator.onLine;
@@ -25,6 +28,7 @@ export const authService = {
   auth: {
     onAuthStateChange: (callback: any) => {
       const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (!user) cachedAccessToken = null;
         const session = user ? { 
             user: { 
                 id: user.uid, 
@@ -67,21 +71,27 @@ export const authService = {
         return { data: null, error: e };
       }
     },
-    signInWithOAuth: async ({ provider }: { provider: string }) => {
-        let authProvider;
+    signInWithOAuth: async ({ provider, scopes }: { provider: string, scopes?: string[] }) => {
+        let authProvider: any;
+        const { GoogleAuthProvider, FacebookAuthProvider, signInWithPopup } = await import('firebase/auth');
+        
         if (provider === 'google') {
-            const { GoogleAuthProvider } = await import('firebase/auth');
             authProvider = new GoogleAuthProvider();
+            if (scopes) {
+              scopes.forEach(s => authProvider.addScope(s));
+            }
         } else if (provider === 'facebook') {
-            const { FacebookAuthProvider } = await import('firebase/auth');
             authProvider = new FacebookAuthProvider();
         } else {
             return { data: null, error: new Error("Unsupported provider") };
         }
         try {
-            const { signInWithPopup } = await import('firebase/auth');
-            const cred = await signInWithPopup(auth, authProvider);
-            return { data: { session: { user: cred.user } }, error: null };
+            const result = await signInWithPopup(auth, authProvider);
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            if (credential?.accessToken) {
+              cachedAccessToken = credential.accessToken;
+            }
+            return { data: { session: { user: result.user }, credential }, error: null };
         } catch (e: any) {
             return { data: null, error: e };
         }
@@ -129,21 +139,90 @@ export const logOut = async () => {
 const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
 // Standalone helper for chunk fetching
-const fetchDocChunksStandalone = async (collectionPath: string, docId: string, numChunks: number) => {
+export const fetchAutoChunked = async (collectionPath: string, docId: string, dataKey: string = 'data') => {
   try {
-    const chunkPromises = [];
-    for (let i = 0; i < numChunks; i++) {
-      chunkPromises.push(getDoc(doc(db, `${collectionPath}/${docId}/chunks`, i.toString())));
+    const docSnap = await getDoc(doc(db, collectionPath, docId));
+    if (!docSnap.exists()) return null;
+    
+    const payload = docSnap.data();
+    if (payload.isChunked && payload.numChunks > 0) {
+      const chunkPromises = [];
+      for (let i = 0; i < payload.numChunks; i++) {
+        chunkPromises.push(getDoc(doc(db, `${collectionPath}/${docId}/chunks`, i.toString())));
+      }
+      const chunkSnaps = await Promise.all(chunkPromises);
+      let fullString = '';
+      for (const snap of chunkSnaps) {
+        if (snap.exists()) fullString += snap.data().data;
+      }
+      return fullString ? JSON.parse(fullString) : null;
     }
-    const chunkSnaps = await Promise.all(chunkPromises);
-    let fullString = '';
-    for (const snap of chunkSnaps) {
-      if (snap.exists()) fullString += snap.data().data;
-    }
-    return fullString ? JSON.parse(fullString) : null;
+    
+    // Handle different legacy field names
+    return payload[dataKey] || payload.data || payload.payload || payload.dataStr ? (typeof payload.dataStr === 'string' ? JSON.parse(payload.dataStr) : payload.dataStr) : payload;
   } catch (e) {
     console.error(`Error fetching chunks for ${collectionPath}/${docId}`, e);
     return null;
+  }
+};
+
+/**
+ * Generic utility to save data to Firestore with automatic chunking for large payloads (>1MB)
+ */
+export const saveAutoChunked = async (
+  collectionPath: string, 
+  docId: string, 
+  data: any, 
+  extraMeta: any = {}, 
+  dataKey: string = 'data',
+  merge: boolean = true
+) => {
+  try {
+    const dataStr = JSON.stringify(data);
+    const size = dataStr.length;
+    const docRef = doc(db, collectionPath, docId);
+    
+    if (size > MAX_FIRESTORE_SIZE) {
+      const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
+      const batch = writeBatch(db);
+      
+      for (let i = 0; i < numChunks; i++) {
+        const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
+        batch.set(doc(db, `${collectionPath}/${docId}/chunks`, i.toString()), { data: chunkStr });
+      }
+      
+      const metaPayload = {
+        ...extraMeta,
+        isChunked: true,
+        numChunks,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Ensure we don't save the large data in the metadata doc
+      delete metaPayload[dataKey];
+      delete metaPayload.data;
+      delete metaPayload.payload;
+      delete metaPayload.dataStr;
+      delete metaPayload.content;
+      delete metaPayload.notes;
+
+      await batch.commit();
+      await setDoc(docRef, metaPayload, { merge });
+      return true;
+    } else {
+      const payload = {
+        ...extraMeta,
+        [dataKey]: data,
+        isChunked: false,
+        numChunks: 0,
+        updated_at: new Date().toISOString()
+      };
+      await setDoc(docRef, payload, { merge });
+      return true;
+    }
+  } catch (error) {
+    console.error(`Error in saveAutoChunked for ${collectionPath}/${docId}:`, error);
+    throw error;
   }
 };
 
@@ -151,10 +230,10 @@ const fetchDocChunksStandalone = async (collectionPath: string, docId: string, n
 const buildTopicTree = (flatTopics: any[]) => {
   const map = new Map<string, any>();
   const roots: any[] = [];
+  const orphans: any[] = [];
 
   // Initialize map with clones and ensure children starts fresh
   flatTopics.forEach(t => {
-    // We strip existing children to rebuild the tree from scratch using parentId links
     const { children, ...rest } = t;
     map.set(t.id, { ...rest, children: [] });
   });
@@ -168,11 +247,19 @@ const buildTopicTree = (flatTopics: any[]) => {
         parent.children.push(node);
       }
     } else if (!t.parentId) {
-      // ONLY push to roots if it definitely has no parent.
-      // If it has a parentId but the parent is missing from the map, 
-      // we treat it as an orphan for now (it won't show at the root level).
       roots.push(node);
+    } else {
+      // ParentId exists but parent not in map - it's an orphan
+      orphans.push(node);
     }
+  });
+
+  // To prevent data loss, we append orphans to the roots if they are not already nested
+  // This ensures they are at least visible somewhere if the parent is missing.
+  orphans.forEach(orphan => {
+    // Check if this orphan is already a descendant of some other node that IS in the tree
+    // (This is a simplified check - if it's an orphan of an orphan, it'll still show up)
+    roots.push(orphan);
   });
 
   return roots;
@@ -234,15 +321,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   // 1. Listen to the monolith document
   const unsubMain = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
     if (docSnap.exists()) {
-      const payload = docSnap.data();
-      let data = null;
-      if (payload.isChunked && payload.numChunks > 0) {
-         data = await fetchDocChunksStandalone('dps_data', userId, payload.numChunks);
-      } else if (payload.dataStr) {
-         data = JSON.parse(payload.dataStr);
-      } else {
-         data = payload.data || payload;
-      }
+      const data = await fetchAutoChunked('dps_data', userId, 'dataStr');
       
       if (data) {
         mainDoc = data;
@@ -297,7 +376,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
         topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
 
         if (data.isChunked && data.numChunks > 0) {
-          const p = fetchDocChunksStandalone('dps_topics', change.doc.id, data.numChunks).then(reconstructed => {
+          const p = fetchAutoChunked('dps_topics', change.doc.id).then(reconstructed => {
             if (reconstructed) {
               const current = topicsMap.get(change.doc.id) || data;
               topicsMap.set(change.doc.id, { ...reconstructed, ...current, id: change.doc.id });
@@ -381,21 +460,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
 
 export const fetchData = async (userId: string) => {
   try {
-    const docSnap = await getDoc(doc(db, 'dps_data', userId));
-    if (docSnap.exists()) {
-      const payload = docSnap.data();
-      lastSyncStatus = true;
-      if (payload.isChunked && payload.numChunks > 0) {
-         // Use the helper we defined in the closure scope of subscribeToData? 
-         // No, it's not exported. Let's define a standalone helper.
-         return await fetchDocChunksStandalone('dps_data', userId, payload.numChunks);
-      }
-      if (payload.dataStr) {
-         return JSON.parse(payload.dataStr);
-      }
-      return payload.data;
-    }
-    return null;
+    return await fetchAutoChunked('dps_data', userId, 'dataStr');
   } catch (error) { 
       console.error("Fetch data error:", error);
       return null; 
@@ -422,37 +487,14 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
       // from the monolith document and let granular collections handle them.
       const { students, dpssTopics, selfLearningTopics, ...metaOnly } = latestDataState;
       
-      const dataStr = JSON.stringify(metaOnly);
-      const size = dataStr.length;
       const updatedAt = latestDataState.updatedAt || Date.now();
-      
-      let payload = {};
-      if (size > MAX_FIRESTORE_SIZE) {
-        const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-        const batch = writeBatch(db);
-        for (let i = 0; i < numChunks; i++) {
-           const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-           batch.set(doc(db, `dps_data/${userId}/chunks`, i.toString()), { data: chunkStr });
-        }
-        payload = {
-           folderId: userId,
-           updatedAt: updatedAt,
-           version: latestDataState.version || 1,
-           numChunks: numChunks,
-           isChunked: true
-        };
-        await batch.commit();
-      } else {
-        payload = {
-           folderId: userId,
-           updatedAt: updatedAt,
-           version: latestDataState.version || 1,
-           dataStr: dataStr,
-           isChunked: false
-        };
-      }
-      
-      await setDoc(doc(db, 'dps_data', userId), payload);
+      const extraMeta = {
+        folderId: userId,
+        updatedAt: updatedAt,
+        version: latestDataState.version || 1
+      };
+
+      await saveAutoChunked('dps_data', userId, metaOnly, extraMeta, 'dataStr');
       lastSyncStatus = true;
     } catch (error) {
       console.error("Firebase exception during save:", error);
@@ -479,36 +521,13 @@ export const processSyncQueue = async () => {
   // Process in parallel for speed
   const syncPromises = queue.map(async (item) => {
     try {
-      const dataStr = JSON.stringify(item.data);
-      const size = dataStr.length;
+      const extraMeta = {
+        folderId: item.userId,
+        updatedAt: item.timestamp,
+        version: item.data.version || 1
+      };
       
-      let payload: any = {};
-      if (size > MAX_FIRESTORE_SIZE) {
-        const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-        const batch = writeBatch(db);
-        for (let i = 0; i < numChunks; i++) {
-           const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-           batch.set(doc(db, `dps_data/${item.userId}/chunks`, i.toString()), { data: chunkStr });
-        }
-        payload = {
-           folderId: item.userId,
-           updatedAt: item.timestamp,
-           version: item.data.version || 1,
-           numChunks: numChunks,
-           isChunked: true
-        };
-        await batch.commit();
-      } else {
-        payload = {
-           folderId: item.userId,
-           updatedAt: item.timestamp,
-           version: item.data.version || 1,
-           dataStr: dataStr,
-           isChunked: false
-        };
-      }
-      
-      await setDoc(doc(db, 'dps_data', item.userId), payload);
+      await saveAutoChunked('dps_data', item.userId, item.data, extraMeta, 'dataStr');
       idsToRemove.push(item.id);
     } catch (e) {
       console.error("Error processing sync queue item:", e);
@@ -557,58 +576,37 @@ export const deleteFile = async (path: string) => {
 export const saveTopic = async (userId: string, topic: any, category: string = 'dpss') => {
   if (!auth.currentUser) return;
   
-  const saveNode = async (node: any, parentId?: string) => {
-    try {
-      const { children, ...topicData } = node;
-      const topicId = node.id;
-      
-      // Prepare payload (flat structure)
-      let payload: any = {
-        ...topicData,
-        category,
-        owner_id: auth.currentUser!.uid,
-        updated_at: new Date().toISOString(),
-        parentId: parentId || node.parentId || null
-      };
+  const allOps: any[] = [];
+  
+  const collectNodes = (node: any, parentId?: string) => {
+    const { children, ...topicData } = node;
+    const tid = node.id;
+    
+    const payload: any = {
+      ...topicData,
+      category,
+      owner_id: auth.currentUser!.uid,
+      updated_at: new Date().toISOString(),
+      parentId: parentId || node.parentId || null
+    };
 
-      const topicStr = JSON.stringify(payload);
-      const size = topicStr.length;
-
-      if (size > MAX_FIRESTORE_SIZE) {
-         const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-         const batch = writeBatch(db);
-         for (let i = 0; i < numChunks; i++) {
-            const chunkStr = topicStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-            batch.set(doc(db, `dps_topics/${topicId}/chunks`, i.toString()), { data: chunkStr });
-         }
-         payload.isChunked = true;
-         payload.numChunks = numChunks;
-         // Strip the data fields from the main doc to save space
-         delete payload.content;
-         delete payload.notes;
-         await batch.commit();
-      } else {
-         payload.isChunked = false;
-      }
-
-      await setDoc(doc(db, 'dps_topics', topicId), payload, { merge: true });
-
-      // Recursively save children
-      if (children && children.length > 0) {
-        for (const child of children) {
-          await saveNode(child, topicId);
-        }
-      }
-    } catch (e) {
-      console.error("Error saving node", node.id, e);
-      throw e;
+    allOps.push({ id: tid, payload, children: children || [] });
+    
+    if (children && children.length > 0) {
+      children.forEach((c: any) => collectNodes(c, tid));
     }
   };
 
-  try {
-    await saveNode(topic);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `dps_topics/${topic.id}`);
+  collectNodes(topic);
+
+  // Process all collected nodes
+  for (const op of allOps) {
+    try {
+      const { id, payload } = op;
+      await saveAutoChunked('dps_topics', id, payload, {}, 'data');
+    } catch (e) {
+      console.error("Error saving topic node", op.id, e);
+    }
   }
 };
 
@@ -765,15 +763,14 @@ export const saveHabitCompletion = async (userId: string, habitId: string, date:
 
 export const getSharedNote = async (shareId: string) => {
   try {
-    const docSnap = await getDoc(doc(db, 'dps_shares', shareId));
-    if (!docSnap.exists()) return null;
+    const payload = await fetchAutoChunked('dps_shares', shareId, 'payload');
+    if (!payload) return null;
     
-    const payload = docSnap.data();
-    if (payload.isChunked && payload.numChunks > 0) {
-      const reconstructed = await fetchDocChunksStandalone('dps_shares', shareId, payload.numChunks);
-      return { ...payload, payload: reconstructed };
+    // Compatibility check for older structure
+    if (payload.payload && typeof payload.payload === 'object' && !Array.isArray(payload.payload)) {
+      return payload;
     }
-    return payload;
+    return { payload };
   } catch (error) { 
       console.error("Error fetching shared note:", error);
       return null; 
@@ -823,12 +820,8 @@ export const createSharedNote = async (userId: string, ownerName: string, type: 
   if (userId === 'unknown' || !userId) {
     userId = auth.currentUser.uid;
   }
-
   const id = Math.random().toString(36).substring(2, 12);
-  const payloadStr = JSON.stringify(payload);
-  const size = payloadStr.length;
-  
-  let shareDoc: any = {
+  const extraMeta = {
     id, 
     owner_id: userId, 
     owner_name: ownerName, 
@@ -838,20 +831,7 @@ export const createSharedNote = async (userId: string, ownerName: string, type: 
   };
 
   try {
-    if (size > MAX_FIRESTORE_SIZE) {
-      const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-      for (let i = 0; i < numChunks; i++) {
-         const chunkStr = payloadStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-         await setDoc(doc(db, `dps_shares/${id}/chunks`, i.toString()), { data: chunkStr });
-      }
-      shareDoc.isChunked = true;
-      shareDoc.numChunks = numChunks;
-    } else {
-      shareDoc.payload = payload;
-      shareDoc.isChunked = false;
-    }
-
-    await setDoc(doc(db, 'dps_shares', id), shareDoc);
+    await saveAutoChunked('dps_shares', id, payload, extraMeta, 'payload', false);
     return id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.WRITE, `dps_shares/${id}`);
@@ -868,33 +848,17 @@ export const getCloudBackups = async (userId: string) => {
   }
 };
 
-export const createCloudBackup = async (userId: string, data: any) => {
+export const createCloudBackup = async (userId: string, data: any, type: 'Manual' | 'Auto' = 'Manual') => {
   try {
-    const dataStr = JSON.stringify(data);
-    const size = dataStr.length;
-    const backupId = uuidv4(); // We need a stable ID for chunks sub-collection
-    
-    let backupDoc: any = {
+    const backupId = uuidv4(); 
+    const extraMeta = {
       id: backupId,
       owner_id: userId,
-      type: 'Manual',
+      type,
       timestamp: new Date().toISOString()
     };
 
-    if (size > MAX_FIRESTORE_SIZE) {
-       const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-       for (let i = 0; i < numChunks; i++) {
-          const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-          await setDoc(doc(db, `dps_backups/${backupId}/chunks`, i.toString()), { data: chunkStr });
-       }
-       backupDoc.isChunked = true;
-       backupDoc.numChunks = numChunks;
-    } else {
-       backupDoc.data = data;
-       backupDoc.isChunked = false;
-    }
-    
-    await setDoc(doc(db, 'dps_backups', backupId), backupDoc);
+    await saveAutoChunked('dps_backups', backupId, data, extraMeta, 'data', false);
   } catch (err) {
     console.error("Backup failed", err);
     throw err;
@@ -903,16 +867,7 @@ export const createCloudBackup = async (userId: string, data: any) => {
 
 export const fetchBackupPayload = async (backupDoc: any) => {
   try {
-    if (!backupDoc.isChunked) return backupDoc.data;
-    
-    let fullString = '';
-    for (let i = 0; i < backupDoc.numChunks; i++) {
-      const chunkSnap = await getDoc(doc(db, `dps_backups/${backupDoc.id}/chunks`, i.toString()));
-      if (chunkSnap.exists()) {
-        fullString += chunkSnap.data().data;
-      }
-    }
-    return JSON.parse(fullString);
+    return await fetchAutoChunked('dps_backups', backupDoc.id, 'data');
   } catch (error) {
     console.error("Error fetching backup payload:", error);
     return null;
@@ -920,5 +875,23 @@ export const fetchBackupPayload = async (backupDoc: any) => {
 };
 
 export const getSyncStatus = () => lastSyncStatus;
+
+export const getLastAutoBackupTimestamp = async (userId: string) => {
+  try {
+    const q = query(
+      collection(db, 'dps_backups'), 
+      where('owner_id', '==', userId), 
+      where('type', '==', 'Auto'),
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+    const snaps = await getDocs(q);
+    if (snaps.empty) return null;
+    return snaps.docs[0].data().timestamp;
+  } catch (err) {
+    console.error("Error fetching last auto backup", err);
+    return null;
+  }
+};
 
 

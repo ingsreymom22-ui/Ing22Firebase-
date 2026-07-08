@@ -36,13 +36,15 @@ import {
   saveData,
   logOut,
   authService,
+  getLastAutoBackupTimestamp,
+  createCloudBackup,
 } from "./services/firebase";
 import { decodeFromURLSafeBase64 } from "./services/sharingEncoder";
 import { storage } from "./services/storage";
-import { Menu, MessageSquare, X, GraduationCap, Cloud, Check } from "lucide-react";
+import { Menu, MessageSquare, X, GraduationCap, Cloud, Check, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { v4 as uuidv4 } from "uuid";
-import { addMonths, format } from "date-fns";
+import { addMonths, format, differenceInDays } from "date-fns";
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   {
@@ -174,6 +176,43 @@ const App: React.FC = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Auto-Backup Logic
+  useEffect(() => {
+    if (!currentUser?.uid || isAuthInitializing) return;
+
+    const runAutoBackup = async () => {
+      try {
+        const lastTimestamp = await getLastAutoBackupTimestamp(currentUser.uid);
+        const now = new Date();
+        
+        // Backup every 7 days (Weekly as requested)
+        const shouldBackup = !lastTimestamp || differenceInDays(now, new Date(lastTimestamp)) >= 7;
+        
+        if (shouldBackup) {
+          console.log("Triggering weekly auto-backup...");
+          // 1. Firebase Cloud Backup (Durable internal)
+          await createCloudBackup(currentUser.uid, currentDataRef.current, 'Auto');
+          
+          // 2. Google Drive Backup (External portability)
+          const { getAccessToken } = await import("./services/firebase");
+          const token = getAccessToken();
+          if (token) {
+             const { uploadToDrive } = await import("./services/googleDrive");
+             await uploadToDrive(`dpss_weekly_drive_backup_${format(now, 'yyyy-MM-dd')}.json`, currentDataRef.current);
+          }
+          
+          console.log("Weekly auto-backup completed.");
+        }
+      } catch (err) {
+        console.error("Auto-backup failed", err);
+      }
+    };
+
+    // Delay slightly to ensure data is loaded
+    const timer = setTimeout(runAutoBackup, 15000); 
+    return () => clearTimeout(timer);
+  }, [currentUser?.uid, isAuthInitializing]);
 
   const [dataLocal, setInternalData] = useState<AppData>(() => {
     const stored = localStorage.getItem("dps_data");
@@ -909,7 +948,7 @@ const App: React.FC = () => {
 
     if (currentUser?.uid && topicToSave) {
       const { saveTopic } = await import("./services/firebase");
-      saveTopic(currentUser.uid, topicToSave, category);
+      await saveTopic(currentUser.uid, topicToSave, category);
     }
   };
 

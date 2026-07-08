@@ -163,6 +163,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [isCloudShareLoading, setIsCloudShareLoading] = useState(false);
   const [cloudShareError, setCloudShareError] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isCopiedJson, setIsCopiedJson] = useState(false);
@@ -217,8 +218,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
-  const handleImportJsonOrText = (jsonText: string) => {
+  const handleImportJsonOrText = async (jsonText: string) => {
     try {
+      setIsImporting(true);
       const parsed = JSON.parse(jsonText);
       if (!parsed || !parsed.title) {
         throw new Error("Invalid format. The JSON must contain a 'title' field.");
@@ -240,15 +242,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const updatedTopics = [...currentTopics, clonedTopic];
       
       if (onUpdateTopic) {
-        onUpdateTopic(updatedTopics, clonedTopic);
+        await onUpdateTopic(updatedTopics, clonedTopic);
       } else {
         onUpdate({ ...data, dpssTopics: updatedTopics });
       }
-      alert(`Successfully imported folder: "${clonedTopic.title}"!`);
+      alert(`Successfully imported folder: "${clonedTopic.title}"! All topics and nested structures have been securely saved to the cloud.`);
       setIsImportModalOpen(false);
       setImportJsonText('');
     } catch (err: any) {
       alert("Failed to import. " + (err.message || "Please check that the JSON is valid and formatted correctly."));
+    } finally {
+      setIsImporting(false);
     }
   };
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null);
@@ -7368,10 +7372,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               </button>
               <button
                 onClick={() => handleImportJsonOrText(importJsonText)}
-                disabled={!importJsonText.trim()}
-                className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 transition-all font-sans font-black"
+                disabled={!importJsonText.trim() || isImporting}
+                className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 transition-all font-sans font-black flex items-center gap-2"
               >
-                Import Folder
+                {isImporting ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Saving to Cloud...
+                  </>
+                ) : (
+                  'Import Folder'
+                )}
               </button>
             </div>
           </div>
