@@ -305,7 +305,6 @@ const App: React.FC = () => {
 
   const [history, setHistory] = useState<AppData[]>([]);
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
-  const [showSyncToast, setShowSyncToast] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -412,9 +411,6 @@ const App: React.FC = () => {
           if (JSON.stringify(currentDataRef.current) === dataStr) {
             hasUnsavedChangesRef.current = false;
           }
-          
-          setShowSyncToast(true);
-          setTimeout(() => setShowSyncToast(false), 2000);
         } catch (err) {
           console.error("Auto Sync Error:", err);
         } finally {
@@ -1502,34 +1498,6 @@ const App: React.FC = () => {
           ) : null}
         </AnimatePresence>
       </div>
-
-      {/* Non-Intrusive Animated Bottom Toast confirmation */}
-      <AnimatePresence>
-        {showSyncToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 15, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 350, damping: 25 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-3 px-4 py-3 bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl font-sans select-none pointer-events-none"
-          >
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/25 text-emerald-400">
-              <Cloud size={14} className="animate-bounce" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black tracking-wider uppercase leading-none text-slate-200">
-                Cloud Sync Success
-              </span>
-              <span className="text-[9px] font-medium leading-normal text-slate-400 mt-1">
-                Data saved successfully to Firebase
-              </span>
-            </div>
-            <div className="flex items-center justify-center w-4.5 h-4.5 rounded-full bg-emerald-500 text-slate-950 ml-2 shadow-inner">
-              <Check size={10} strokeWidth={4} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

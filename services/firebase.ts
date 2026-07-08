@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy, deleteDoc, writeBatch, limit } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, orderBy, deleteDoc, writeBatch, limit, deleteField } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject, uploadBytes } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,7 +14,7 @@ const fStorage = getStorage(app);
 
 // Global connection state
 let lastSyncStatus = false;
-let isSyncingQueue = false;
+let isSyncing = false;
 let cachedAccessToken: string | null = null;
 
 export const getAccessToken = () => cachedAccessToken;
@@ -139,12 +139,17 @@ export const logOut = async () => {
 const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
 // Standalone helper for chunk fetching
-export const fetchAutoChunked = async (collectionPath: string, docId: string, dataKey: string = 'data') => {
+export const fetchAutoChunked = async (collectionPath: string, docId: string, dataKey: string = 'data', existingDocSnap?: any) => {
   try {
-    const docSnap = await getDoc(doc(db, collectionPath, docId));
+    const docRef = doc(db, collectionPath, docId);
+    const docSnap = existingDocSnap || (await getDoc(docRef));
     if (!docSnap.exists()) return null;
     
     const payload = docSnap.data();
+    if (!payload) return null;
+    
+    let result: any = null;
+
     if (payload.isChunked && payload.numChunks > 0) {
       const chunkPromises = [];
       for (let i = 0; i < payload.numChunks; i++) {
@@ -153,13 +158,62 @@ export const fetchAutoChunked = async (collectionPath: string, docId: string, da
       const chunkSnaps = await Promise.all(chunkPromises);
       let fullString = '';
       for (const snap of chunkSnaps) {
-        if (snap.exists()) fullString += snap.data().data;
+        if (snap.exists()) {
+          const chunkData = snap.data();
+          if (chunkData && chunkData.data) fullString += chunkData.data;
+        }
       }
-      return fullString ? JSON.parse(fullString) : null;
+      
+      try {
+        result = fullString ? JSON.parse(fullString) : null;
+      } catch (parseError) {
+        console.error(`JSON parse error in fetchAutoChunked for ${collectionPath}/${docId}`, parseError);
+        // If it was supposed to be chunked but parsing failed, we can't trust the data
+        return null;
+      }
+    } else {
+      // Check primary key first
+      const primaryValue = payload[dataKey];
+      if (primaryValue !== undefined && primaryValue !== null) {
+         if (typeof primaryValue === 'string' && (primaryValue.startsWith('{') || primaryValue.startsWith('['))) {
+           try {
+             result = JSON.parse(primaryValue);
+           } catch (e) {
+             result = primaryValue;
+           }
+         } else {
+           result = primaryValue;
+         }
+      } else {
+        // Fallbacks for legacy/varied structures
+        const fallback = payload.data || payload.payload || payload.dataStr;
+        if (fallback !== undefined && fallback !== null) {
+           if (typeof fallback === 'string' && (fallback.startsWith('{') || fallback.startsWith('['))) {
+             try {
+               result = JSON.parse(fallback);
+             } catch (e) {
+               result = fallback;
+             }
+           } else {
+             result = fallback;
+           }
+        } else {
+          result = payload;
+        }
+      }
     }
     
-    // Handle different legacy field names
-    return payload[dataKey] || payload.data || payload.payload || payload.dataStr ? (typeof payload.dataStr === 'string' ? JSON.parse(payload.dataStr) : payload.dataStr) : payload;
+    // Ensure metadata from the parent doc is preserved in the returned object
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      return { 
+        ...result, 
+        updatedAt: payload.updatedAt || result.updatedAt,
+        folderId: payload.folderId || result.folderId,
+        version: payload.version || result.version
+      };
+    }
+    
+    return result;
   } catch (e) {
     console.error(`Error fetching chunks for ${collectionPath}/${docId}`, e);
     return null;
@@ -195,27 +249,23 @@ export const saveAutoChunked = async (
         ...extraMeta,
         isChunked: true,
         numChunks,
-        updated_at: new Date().toISOString()
+        [dataKey]: deleteField(),
+        data: deleteField(),
+        payload: deleteField(),
+        dataStr: deleteField(),
+        content: deleteField(),
+        notes: deleteField()
       };
-      
-      // Ensure we don't save the large data in the metadata doc
-      delete metaPayload[dataKey];
-      delete metaPayload.data;
-      delete metaPayload.payload;
-      delete metaPayload.dataStr;
-      delete metaPayload.content;
-      delete metaPayload.notes;
 
+      batch.set(docRef, metaPayload, { merge });
       await batch.commit();
-      await setDoc(docRef, metaPayload, { merge });
       return true;
     } else {
       const payload = {
         ...extraMeta,
         [dataKey]: data,
         isChunked: false,
-        numChunks: 0,
-        updated_at: new Date().toISOString()
+        numChunks: 0
       };
       await setDoc(docRef, payload, { merge });
       return true;
@@ -321,7 +371,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
   // 1. Listen to the monolith document
   const unsubMain = onSnapshot(doc(db, 'dps_data', userId), async (docSnap) => {
     if (docSnap.exists()) {
-      const data = await fetchAutoChunked('dps_data', userId, 'dataStr');
+      const data = await fetchAutoChunked('dps_data', userId, 'dataStr', docSnap);
       
       if (data) {
         mainDoc = data;
@@ -376,7 +426,7 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
         topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
 
         if (data.isChunked && data.numChunks > 0) {
-          const p = fetchAutoChunked('dps_topics', change.doc.id).then(reconstructed => {
+          const p = fetchAutoChunked('dps_topics', change.doc.id, 'data', change.doc).then(reconstructed => {
             if (reconstructed) {
               const current = topicsMap.get(change.doc.id) || data;
               topicsMap.set(change.doc.id, { ...reconstructed, ...current, id: change.doc.id });
@@ -470,8 +520,11 @@ export const fetchData = async (userId: string) => {
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let latestDataState: any = null;
 
+
 export const saveData = async (userId: string, dataState: any, instant: boolean = false) => {
   if (!userId || userId === 'unknown') return;
+  if (isSyncing && !instant) return; 
+  
   latestDataState = dataState;
   
   const performSave = async () => {
@@ -483,10 +536,10 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
     }
 
     try {
-      // To improve sync speed and real-time reliability, we exclude large arrays 
-      // from the monolith document and let granular collections handle them.
-      const { students, dpssTopics, selfLearningTopics, ...metaOnly } = latestDataState;
-      
+      isSyncing = true;
+      // We save the FULL state to the monolith (chunked if needed) 
+      // as the primary source of truth, while granular collections 
+      // provide real-time updates for specific fields.
       const updatedAt = latestDataState.updatedAt || Date.now();
       const extraMeta = {
         folderId: userId,
@@ -494,12 +547,14 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
         version: latestDataState.version || 1
       };
 
-      await saveAutoChunked('dps_data', userId, metaOnly, extraMeta, 'dataStr');
+      await saveAutoChunked('dps_data', userId, latestDataState, extraMeta, 'dataStr');
       lastSyncStatus = true;
     } catch (error) {
       console.error("Firebase exception during save:", error);
       await localIndexedDB.queueSync(userId, latestDataState);
       lastSyncStatus = false;
+    } finally {
+      isSyncing = false;
     }
   };
 
@@ -508,41 +563,43 @@ export const saveData = async (userId: string, dataState: any, instant: boolean 
 
 // Process the sync queue
 export const processSyncQueue = async () => {
-  if (isSyncingQueue || (typeof window !== 'undefined' && !window.navigator.onLine)) return;
+  if (isSyncing || (typeof window !== 'undefined' && !window.navigator.onLine)) return;
   
   const queue = await localIndexedDB.getSyncQueue();
   if (queue.length === 0) return;
   
-  isSyncingQueue = true;
+  isSyncing = true;
   console.log(`Processing ${queue.length} queued items...`);
   
   const idsToRemove: number[] = [];
   
-  // Process in parallel for speed
-  const syncPromises = queue.map(async (item) => {
-    try {
-      const extraMeta = {
-        folderId: item.userId,
-        updatedAt: item.timestamp,
-        version: item.data.version || 1
-      };
-      
-      await saveAutoChunked('dps_data', item.userId, item.data, extraMeta, 'dataStr');
-      idsToRemove.push(item.id);
-    } catch (e) {
-      console.error("Error processing sync queue item:", e);
-    }
-  });
+  try {
+    // Process in parallel for speed
+    const syncPromises = queue.map(async (item) => {
+      try {
+        const extraMeta = {
+          folderId: item.userId,
+          updatedAt: item.timestamp,
+          version: item.data.version || 1
+        };
+        
+        await saveAutoChunked('dps_data', item.userId, item.data, extraMeta, 'dataStr');
+        idsToRemove.push(item.id);
+      } catch (e) {
+        console.error("Error processing sync queue item:", e);
+      }
+    });
 
-  await Promise.all(syncPromises);
-  
-  if (idsToRemove.length > 0) {
-    await localIndexedDB.clearSyncQueue(idsToRemove);
-    console.log(`Successfully synced ${idsToRemove.length} items.`);
-    lastSyncStatus = true;
+    await Promise.all(syncPromises);
+    
+    if (idsToRemove.length > 0) {
+      await localIndexedDB.clearSyncQueue(idsToRemove);
+      console.log(`Successfully synced ${idsToRemove.length} items.`);
+      lastSyncStatus = true;
+    }
+  } finally {
+    isSyncing = false;
   }
-  
-  isSyncingQueue = false;
 };
 
 // Start background sync interval
