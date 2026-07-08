@@ -1467,37 +1467,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Persistent Sync Status Indicator (Google Docs Style) */}
-      <div className="fixed top-2 right-4 z-[100] no-print pointer-events-none">
-        <AnimatePresence mode="wait">
-          {isSyncing ? (
-            <motion.div
-              key="syncing"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full backdrop-blur-md"
-            >
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
-                Saving...
-              </span>
-            </motion.div>
-          ) : lastSyncedTime ? (
-            <motion.div
-              key="saved"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 rounded-full backdrop-blur-md"
-            >
-              <Check size={10} className="text-slate-400 dark:text-slate-500" />
-              <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
-                Cloud Synced
-              </span>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
+      {/* Persistent Sync Status Indicator removed as per user request to avoid annoying pop-ups */}
     </div>
   );
 };

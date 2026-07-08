@@ -157,10 +157,18 @@ export const fetchAutoChunked = async (collectionPath: string, docId: string, da
       }
       const chunkSnaps = await Promise.all(chunkPromises);
       let fullString = '';
-      for (const snap of chunkSnaps) {
+      for (let i = 0; i < chunkSnaps.length; i++) {
+        const snap = chunkSnaps[i];
         if (snap.exists()) {
           const chunkData = snap.data();
           if (chunkData && chunkData.data) fullString += chunkData.data;
+        } else {
+          // Fallback to legacy chunk path if new one doesn't exist
+          const legacySnap = await getDoc(doc(db, collectionPath, `${docId}_chunk_${i}`));
+          if (legacySnap.exists()) {
+            const legacyData = legacySnap.data();
+            if (legacyData && legacyData.data) fullString += legacyData.data;
+          }
         }
       }
       
