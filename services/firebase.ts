@@ -136,7 +136,7 @@ export const logOut = async () => {
 };
 
 // Architecture constants
-const MAX_FIRESTORE_SIZE = 400000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
+const MAX_FIRESTORE_SIZE = 100000; // ~400KB chunk size (chars) to be safe for 1MB Firestore limit
 
 // Standalone helper for chunk fetching
 export const fetchAutoChunked = async (collectionPath: string, docId: string, dataKey: string = 'data', existingDocSnap?: any) => {
