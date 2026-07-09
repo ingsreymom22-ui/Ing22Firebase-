@@ -150,64 +150,33 @@ export const fetchAutoChunked = async (collectionPath: string, docId: string, da
     
     let result: any = null;
 
-    if (payload.isChunked && payload.numChunks > 0) {
-      const chunkPromises = [];
-      for (let i = 0; i < payload.numChunks; i++) {
-        chunkPromises.push(getDoc(doc(db, `${collectionPath}/${docId}/chunks`, i.toString())));
-      }
-      const chunkSnaps = await Promise.all(chunkPromises);
-      let fullString = '';
-      for (let i = 0; i < chunkSnaps.length; i++) {
-        const snap = chunkSnaps[i];
-        if (snap.exists()) {
-          const chunkData = snap.data();
-          if (chunkData && chunkData.data) fullString += chunkData.data;
-        } else {
-          // Fallback to legacy chunk path if new one doesn't exist
-          const legacySnap = await getDoc(doc(db, collectionPath, `${docId}_chunk_${i}`));
-          if (legacySnap.exists()) {
-            const legacyData = legacySnap.data();
-            if (legacyData && legacyData.data) fullString += legacyData.data;
-          }
-        }
-      }
-      
-      try {
-        result = fullString ? JSON.parse(fullString) : null;
-      } catch (parseError) {
-        console.error(`JSON parse error in fetchAutoChunked for ${collectionPath}/${docId}`, parseError);
-        // If it was supposed to be chunked but parsing failed, we can't trust the data
-        return null;
-      }
-    } else {
-      // Check primary key first
-      const primaryValue = payload[dataKey];
-      if (primaryValue !== undefined && primaryValue !== null) {
-         if (typeof primaryValue === 'string' && (primaryValue.startsWith('{') || primaryValue.startsWith('['))) {
-           try {
-             result = JSON.parse(primaryValue);
-           } catch (e) {
-             result = primaryValue;
-           }
-         } else {
+    // Check primary key first
+    const primaryValue = payload[dataKey];
+    if (primaryValue !== undefined && primaryValue !== null) {
+       if (typeof primaryValue === 'string' && (primaryValue.startsWith('{') || primaryValue.startsWith('['))) {
+         try {
+           result = JSON.parse(primaryValue);
+         } catch (e) {
            result = primaryValue;
          }
-      } else {
-        // Fallbacks for legacy/varied structures
-        const fallback = payload.data || payload.payload || payload.dataStr;
-        if (fallback !== undefined && fallback !== null) {
-           if (typeof fallback === 'string' && (fallback.startsWith('{') || fallback.startsWith('['))) {
-             try {
-               result = JSON.parse(fallback);
-             } catch (e) {
-               result = fallback;
-             }
-           } else {
+       } else {
+         result = primaryValue;
+       }
+    } else {
+      // Fallbacks for legacy/varied structures
+      const fallback = payload.data || payload.payload || payload.dataStr;
+      if (fallback !== undefined && fallback !== null) {
+         if (typeof fallback === 'string' && (fallback.startsWith('{') || fallback.startsWith('['))) {
+           try {
+             result = JSON.parse(fallback);
+           } catch (e) {
              result = fallback;
            }
-        } else {
-          result = payload;
-        }
+         } else {
+           result = fallback;
+         }
+      } else {
+        result = payload;
       }
     }
     
@@ -223,7 +192,7 @@ export const fetchAutoChunked = async (collectionPath: string, docId: string, da
     
     return result;
   } catch (e) {
-    console.error(`Error fetching chunks for ${collectionPath}/${docId}`, e);
+    console.error(`Error fetching for ${collectionPath}/${docId}`, e);
     return null;
   }
 };
@@ -240,46 +209,24 @@ export const saveAutoChunked = async (
   merge: boolean = true
 ) => {
   try {
-    const dataStr = JSON.stringify(data);
-    const size = dataStr.length;
     const docRef = doc(db, collectionPath, docId);
     
-    if (size > MAX_FIRESTORE_SIZE) {
-      const numChunks = Math.ceil(size / MAX_FIRESTORE_SIZE);
-      const batch = writeBatch(db);
-      
-      for (let i = 0; i < numChunks; i++) {
-        const chunkStr = dataStr.substring(i * MAX_FIRESTORE_SIZE, (i + 1) * MAX_FIRESTORE_SIZE);
-        batch.set(doc(db, `${collectionPath}/${docId}/chunks`, i.toString()), { data: chunkStr });
-      }
-      
-      const metaPayload = {
-        ...extraMeta,
-        isChunked: true,
-        numChunks,
-        [dataKey]: deleteField(),
-        data: deleteField(),
-        payload: deleteField(),
-        dataStr: deleteField(),
-        content: deleteField(),
-        notes: deleteField()
-      };
+    // Convert data to JSON string to ensure consistency, 
+    // unless the data is already a string
+    const dataToSave = typeof data === 'string' ? data : JSON.stringify(data);
 
-      batch.set(docRef, metaPayload, { merge });
-      await batch.commit();
-      return true;
-    } else {
-      const payload = {
-        ...extraMeta,
-        [dataKey]: data,
-        isChunked: false,
-        numChunks: 0
-      };
-      await setDoc(docRef, payload, { merge });
-      return true;
-    }
+    const payload = {
+      ...extraMeta,
+      [dataKey]: dataToSave,
+      isChunked: false,
+      numChunks: 0,
+      updatedAt: Date.now()
+    };
+
+    await setDoc(docRef, payload, { merge });
+    return true;
   } catch (error) {
-    console.error(`Error in saveAutoChunked for ${collectionPath}/${docId}:`, error);
+    console.error(`Error in save for ${collectionPath}/${docId}:`, error);
     throw error;
   }
 };
@@ -423,25 +370,17 @@ export const subscribeToData = (userId: string, onUpdate: (data: any) => void, o
 
   // 3. Listen to granular topics collection
   const unsubTopics = onSnapshot(query(collection(db, 'dps_topics'), where('owner_id', '==', userId)), async (snap) => {
-    const chunkPromises: Promise<void>[] = [];
     
     for (const change of snap.docChanges()) {
       const data = change.doc.data();
       if (change.type === 'removed') {
         topicsMap.delete(change.doc.id);
       } else {
-        // Set basic data immediately to avoid parent-child race conditions while chunks load
-        topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
-
-        if (data.isChunked && data.numChunks > 0) {
-          const p = fetchAutoChunked('dps_topics', change.doc.id, 'data', change.doc).then(reconstructed => {
-            if (reconstructed) {
-              const current = topicsMap.get(change.doc.id) || data;
-              topicsMap.set(change.doc.id, { ...reconstructed, ...current, id: change.doc.id });
-            }
-            mergeAndEmit();
-          });
-          chunkPromises.push(p);
+        const reconstructed = await fetchAutoChunked('dps_topics', change.doc.id, 'data', change.doc);
+        if (reconstructed) {
+           topicsMap.set(change.doc.id, { ...data, ...reconstructed, id: change.doc.id });
+        } else {
+           topicsMap.set(change.doc.id, { ...data, id: change.doc.id });
         }
       }
     }
