@@ -36,15 +36,13 @@ import {
   saveData,
   logOut,
   authService,
-  getLastAutoBackupTimestamp,
-  createCloudBackup,
 } from "./services/firebase";
 import { decodeFromURLSafeBase64 } from "./services/sharingEncoder";
 import { storage } from "./services/storage";
-import { Menu, MessageSquare, X, GraduationCap, Cloud, Check, ShieldAlert } from "lucide-react";
+import { Menu, MessageSquare, X, GraduationCap, Cloud, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { v4 as uuidv4 } from "uuid";
-import { addMonths, format, differenceInDays } from "date-fns";
+import { addMonths, format } from "date-fns";
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   {
@@ -177,43 +175,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Auto-Backup Logic
-  useEffect(() => {
-    if (!currentUser?.uid || isAuthInitializing) return;
-
-    const runAutoBackup = async () => {
-      try {
-        const lastTimestamp = await getLastAutoBackupTimestamp(currentUser.uid);
-        const now = new Date();
-        
-        // Backup every 7 days (Weekly as requested)
-        const shouldBackup = !lastTimestamp || differenceInDays(now, new Date(lastTimestamp)) >= 7;
-        
-        if (shouldBackup) {
-          console.log("Triggering weekly auto-backup...");
-          // 1. Firebase Cloud Backup (Durable internal)
-          await createCloudBackup(currentUser.uid, currentDataRef.current, 'Auto');
-          
-          // 2. Google Drive Backup (External portability)
-          const { getAccessToken } = await import("./services/firebase");
-          const token = getAccessToken();
-          if (token) {
-             const { uploadToDrive } = await import("./services/googleDrive");
-             await uploadToDrive(`dpss_weekly_drive_backup_${format(now, 'yyyy-MM-dd')}.json`, currentDataRef.current);
-          }
-          
-          console.log("Weekly auto-backup completed.");
-        }
-      } catch (err) {
-        console.error("Auto-backup failed", err);
-      }
-    };
-
-    // Delay slightly to ensure data is loaded
-    const timer = setTimeout(runAutoBackup, 15000); 
-    return () => clearTimeout(timer);
-  }, [currentUser?.uid, isAuthInitializing]);
-
   const [dataLocal, setInternalData] = useState<AppData>(() => {
     const stored = localStorage.getItem("dps_data");
     if (stored) {
@@ -305,6 +266,7 @@ const App: React.FC = () => {
 
   const [history, setHistory] = useState<AppData[]>([]);
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
+  const [showSyncToast, setShowSyncToast] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -411,6 +373,9 @@ const App: React.FC = () => {
           if (JSON.stringify(currentDataRef.current) === dataStr) {
             hasUnsavedChangesRef.current = false;
           }
+          
+          setShowSyncToast(true);
+          setTimeout(() => setShowSyncToast(false), 2000);
         } catch (err) {
           console.error("Auto Sync Error:", err);
         } finally {
@@ -492,14 +457,14 @@ const App: React.FC = () => {
     const { type, payload } = sharedNoteData;
 
     if (type === "self-learning" || type === "note-taking" || type === "dpss") {
-      const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
+      const cloneTopicWithNewIds = (topic: any): any => {
         const newId = uuidv4();
-        const { id, parentId: oldParentId, deletedAt, deleted, isArchived, ...rest } = topic;
         return {
-          ...rest,
+          ...topic,
           id: newId,
-          parentId: parentId || null,
-          children: topic.children ? topic.children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
+          children: topic.children
+            ? topic.children.map(cloneTopicWithNewIds)
+            : undefined,
         };
       };
 
@@ -944,7 +909,7 @@ const App: React.FC = () => {
 
     if (currentUser?.uid && topicToSave) {
       const { saveTopic } = await import("./services/firebase");
-      await saveTopic(currentUser.uid, topicToSave, category);
+      saveTopic(currentUser.uid, topicToSave, category);
     }
   };
 
@@ -1467,7 +1432,65 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Persistent Sync Status Indicator removed as per user request to avoid annoying pop-ups */}
+      {/* Persistent Sync Status Indicator (Google Docs Style) */}
+      <div className="fixed top-2 right-4 z-[100] no-print pointer-events-none">
+        <AnimatePresence mode="wait">
+          {isSyncing ? (
+            <motion.div
+              key="syncing"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full backdrop-blur-md"
+            >
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                Saving...
+              </span>
+            </motion.div>
+          ) : lastSyncedTime ? (
+            <motion.div
+              key="saved"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 rounded-full backdrop-blur-md"
+            >
+              <Check size={10} className="text-slate-400 dark:text-slate-500" />
+              <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
+                Cloud Synced
+              </span>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
+      {/* Non-Intrusive Animated Bottom Toast confirmation */}
+      <AnimatePresence>
+        {showSyncToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-3 px-4 py-3 bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl font-sans select-none pointer-events-none"
+          >
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/25 text-emerald-400">
+              <Cloud size={14} className="animate-bounce" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black tracking-wider uppercase leading-none text-slate-200">
+                Cloud Sync Success
+              </span>
+              <span className="text-[9px] font-medium leading-normal text-slate-400 mt-1">
+                Data saved successfully to Firebase
+              </span>
+            </div>
+            <div className="flex items-center justify-center w-4.5 h-4.5 rounded-full bg-emerald-500 text-slate-950 ml-2 shadow-inner">
+              <Check size={10} strokeWidth={4} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

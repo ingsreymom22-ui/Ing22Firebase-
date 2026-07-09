@@ -2,12 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AppData, BackupEntry, ModuleLocks } from '../types';
 import { 
   ShieldCheck, RefreshCw, Clock, Lock, Unlock, Download, Upload, Database, ExternalLink, Camera, Sparkles,
-  CalendarDays, CalendarRange, History, Check
+  CalendarDays, CalendarRange, History
 } from 'lucide-react';
-import { getCloudBackups, createCloudBackup, getFirebaseProjectId, getAccessToken, authService } from '../services/firebase';
-import { uploadToDrive, checkDriveAuth } from '../services/googleDrive';
+import { getCloudBackups, createCloudBackup, getFirebaseProjectId } from '../services/firebase';
 import { format, differenceInDays } from 'date-fns';
-import { HardDrive } from 'lucide-react';
 
 interface Props {
   data: AppData;
@@ -20,8 +18,6 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
   const [loading, setLoading] = useState(false);
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [activeTab, setActiveTab] = useState<'Backups' | 'Safety' | 'Locks'>('Backups');
-  const [isDriveLinked, setIsDriveLinked] = useState(false);
-  const [isDriveLoading, setIsDriveLoading] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState<{ configured: boolean; connected: boolean; error: string | null }>({
     configured: false,
@@ -41,9 +37,6 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
         connected, 
         error: !configured ? "Environment variables missing." : (connected ? null : "Could not reach Firebase.")
       });
-      
-      const authorized = await checkDriveAuth();
-      setIsDriveLinked(authorized);
     } catch (err: any) {
       setSyncStatus({ configured: false, connected: false, error: err.message || String(err) });
     } finally {
@@ -109,12 +102,7 @@ service cloud.firestore {
     if (creatingBackup || !currentUser?.uid) return;
     setCreatingBackup(true);
     try {
-        await createCloudBackup(currentUser.uid, data, 'Manual');
-        
-        if (isDriveLinked) {
-          await uploadToDrive(`dpss_manual_backup_${format(new Date(), 'yyyy-MM-dd_HHmm')}.json`, data);
-        }
-        
+        await createCloudBackup(currentUser.uid, data);
         await fetchBackups();
         alert("Manual Snapshot created successfully!");
     } catch (err) {
@@ -131,26 +119,6 @@ service cloud.firestore {
         ...data,
         moduleLocks: { ...currentLocks, [module]: newState }
     });
-  };
-
-  const handleLinkDrive = async () => {
-    setIsDriveLoading(true);
-    try {
-      const { data: result, error } = await authService.auth.signInWithOAuth({ 
-        provider: 'google',
-        scopes: ['https://www.googleapis.com/auth/drive.file']
-      });
-      if (error) throw error;
-      if (result?.credential) {
-        setIsDriveLinked(true);
-        alert("Google Drive linked successfully! Backups will now also be saved to your personal Drive.");
-      }
-    } catch (error: any) {
-      console.error("Error linking Drive:", error);
-      alert("Failed to link Google Drive: " + error.message);
-    } finally {
-      setIsDriveLoading(false);
-    }
   };
 
   const handleRestore = async (backup: any) => {
@@ -240,50 +208,6 @@ service cloud.firestore {
 
             {activeTab === 'Backups' && (
                 <div className="flex flex-col h-full overflow-hidden">
-                    {/* Google Drive Status Header */}
-                    <div className="p-8 border-b border-slate-100 bg-blue-50/30 flex items-center justify-between gap-8">
-                        <div className="flex items-center gap-5">
-                            <div className={`w-14 h-14 rounded-3xl flex items-center justify-center border shadow-sm transition-all ${isDriveLinked ? 'bg-blue-500 text-white shadow-xl shadow-blue-500/20 border-transparent' : 'bg-white border-slate-100 text-slate-400'}`}>
-                                <HardDrive size={28} />
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-3">
-                                    <h4 className="font-black text-[#1B254B] uppercase text-lg tracking-tight leading-none">Google Drive Portable Backup</h4>
-                                    {isDriveLinked ? (
-                                        <span className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 bg-emerald-100/80 px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                            Active Link
-                                        </span>
-                                    ) : (
-                                        <span className="text-[9px] font-black text-slate-400 bg-white border border-slate-100 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                                            Inactive
-                                        </span>
-                                    )}
-                                </div>
-                                <p className="text-xs text-slate-500 font-medium max-w-xl">
-                                    {isDriveLinked 
-                                        ? "Your data is automatically mirrored to your personal Google Drive every 7 days. This provides a secondary, portable safety net outside of the portal."
-                                        : "Connect your Google Drive to enable automated weekly portable backups. You'll never have to worry about manual downloads again."}
-                                </p>
-                            </div>
-                        </div>
-                        {!isDriveLinked ? (
-                            <button 
-                                onClick={handleLinkDrive}
-                                disabled={isDriveLoading}
-                                className="px-6 py-3.5 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
-                            >
-                                {isDriveLoading ? <RefreshCw className="animate-spin" size={14} /> : <HardDrive size={14} />}
-                                {isDriveLoading ? "Authorizing..." : "Link Google Drive"}
-                            </button>
-                        ) : (
-                            <div className="flex items-center gap-2 px-6 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 uppercase shrink-0">
-                                <Check size={14} className="text-emerald-500" />
-                                Linked Successfully
-                            </div>
-                        )}
-                    </div>
-
                     <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                         <div className="flex items-center gap-4">
                              <History className="text-emerald-500" />

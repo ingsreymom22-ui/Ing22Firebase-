@@ -163,7 +163,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [isCloudShareLoading, setIsCloudShareLoading] = useState(false);
   const [cloudShareError, setCloudShareError] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isCopiedJson, setIsCopiedJson] = useState(false);
@@ -218,9 +217,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
-  const handleImportJsonOrText = async (jsonText: string) => {
+  const handleImportJsonOrText = (jsonText: string) => {
     try {
-      setIsImporting(true);
       const parsed = JSON.parse(jsonText);
       if (!parsed || !parsed.title) {
         throw new Error("Invalid format. The JSON must contain a 'title' field.");
@@ -228,9 +226,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       
       const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
         const newId = uuidv4();
-        const { id, parentId: oldParentId, deletedAt, deleted, isArchived, ...rest } = topic;
         return {
-          ...rest,
+          ...topic,
           id: newId,
           parentId: parentId || null,
           children: topic.children ? topic.children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
@@ -242,17 +239,15 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const updatedTopics = [...currentTopics, clonedTopic];
       
       if (onUpdateTopic) {
-        await onUpdateTopic(updatedTopics, clonedTopic);
+        onUpdateTopic(updatedTopics, clonedTopic);
       } else {
         onUpdate({ ...data, dpssTopics: updatedTopics });
       }
-      alert(`Successfully imported folder: "${clonedTopic.title}"! All topics and nested structures have been securely saved to the cloud.`);
+      alert(`Successfully imported folder: "${clonedTopic.title}"!`);
       setIsImportModalOpen(false);
       setImportJsonText('');
     } catch (err: any) {
       alert("Failed to import. " + (err.message || "Please check that the JSON is valid and formatted correctly."));
-    } finally {
-      setIsImporting(false);
     }
   };
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null);
@@ -2249,23 +2244,18 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const duplicateTopic = (id: string) => {
-    const cloneNode = (node: DPSSTopic, parentId?: string): DPSSTopic => {
-      const newId = uuidv4();
-      const { id: oldId, parentId: oldParent, children, ...rest } = node;
+    const cloneNode = (node: DPSSTopic): DPSSTopic => {
       return {
-        ...rest,
-        id: newId,
-        parentId: parentId || null,
-        children: children ? children.map(c => cloneNode(c, newId)) : undefined
+        ...node,
+        id: uuidv4(),
+        children: node.children ? node.children.map(cloneNode) : undefined
       };
     };
 
     const targetTopic = findTopic(data.dpssTopics || [], id);
     if (!targetTopic) return;
     
-    // For the root of the clone, the parentId should match the original's parentId
-    const originalParentId = getParentId(data.dpssTopics || [], id);
-    const cloned = cloneNode(targetTopic, originalParentId);
+    const cloned = cloneNode(targetTopic);
     cloned.title = `${cloned.title} - Copy`;
 
     const updateTopics = (items: DPSSTopic[]): DPSSTopic[] => {
@@ -2657,14 +2647,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     };
     const updatedDpssTopics = markDeleted(data.dpssTopics || []);
 
-    const cloneTopicWithNewIds = (topic: any, parentId?: string): any => {
+    const cloneTopicWithNewIds = (topic: any): any => {
       const newId = uuidv4();
-      const { id: oldId, parentId: oldParent, children, deletedAt, deleted, ...rest } = topic;
       return {
-        ...rest,
+        ...topic,
         id: newId,
-        parentId: parentId || null,
-        children: children ? children.map((c: any) => cloneTopicWithNewIds(c, newId)) : undefined
+        children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
       };
     };
     const clonedTopic = cloneTopicWithNewIds(topicToMove);
@@ -7372,17 +7360,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               </button>
               <button
                 onClick={() => handleImportJsonOrText(importJsonText)}
-                disabled={!importJsonText.trim() || isImporting}
-                className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 transition-all font-sans font-black flex items-center gap-2"
+                disabled={!importJsonText.trim()}
+                className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 transition-all font-sans font-black"
               >
-                {isImporting ? (
-                  <>
-                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Saving to Cloud...
-                  </>
-                ) : (
-                  'Import Folder'
-                )}
+                Import Folder
               </button>
             </div>
           </div>

@@ -48,39 +48,8 @@ service cloud.firestore {
     match /dps_students/{id} {
       allow read: if isOwner(resource.data.owner_id);
       allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
-
-      match /chunks/{chunkId} {
-        allow read: if isOwner(get(/databases/$(database)/documents/dps_students/$(id)).data.owner_id);
-        allow write: if isOwner(get(/databases/$(database)/documents/dps_students/$(id)).data.owner_id);
-      }
     }
-
     match /dps_topics/{id} {
-      allow read: if isOwner(resource.data.owner_id);
-      allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
-
-      match /chunks/{chunkId} {
-        allow read: if isOwner(get(/databases/$(database)/documents/dps_topics/$(id)).data.owner_id);
-        allow write: if isOwner(get(/databases/$(database)/documents/dps_topics/$(id)).data.owner_id);
-      }
-    }
-    
-    match /dps_attendance/{id} {
-      allow read: if isOwner(resource.data.owner_id);
-      allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
-    }
-
-    match /dps_daily_notes/{id} {
-      allow read: if isOwner(resource.data.owner_id);
-      allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
-    }
-
-    match /dps_journal/{id} {
-      allow read: if isOwner(resource.data.owner_id);
-      allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
-    }
-
-    match /dps_expenses/{id} {
       allow read: if isOwner(resource.data.owner_id);
       allow write: if isOwner(incoming().owner_id) || (resource != null && isOwner(resource.data.owner_id));
     }
