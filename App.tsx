@@ -387,27 +387,6 @@ const App: React.FC = () => {
     }
   }, [data?.updatedAt, currentUser?.uid, loading, isSyncing]);
 
-  // Google Drive Auto-Backup Hook
-  useEffect(() => {
-    if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
-      if (localStorage.getItem('dps_drive_autobackup') !== 'true') return;
-      
-      const timer = setTimeout(async () => {
-        try {
-          const { getGoogleAccessToken, uploadDataToDrive } = await import('./services/googleDrive');
-          if (getGoogleAccessToken()) {
-            await uploadDataToDrive(currentDataRef.current);
-            console.log("Auto-backed up to Google Drive");
-          }
-        } catch (err) {
-          console.error("Google Drive auto-backup failed:", err);
-        }
-      }, 60000); // 1 minute debounce
-      
-      return () => clearTimeout(timer);
-    }
-  }, [data?.updatedAt, currentUser?.uid, loading]);
-
   // No auto-seeding of named tasks per user request for a blank/clean start
   useEffect(() => {
     // Left empty intentionally to prevent auto-seeding of named tasks
