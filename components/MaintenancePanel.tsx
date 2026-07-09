@@ -26,6 +26,50 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate, currentUser 
   });
   const [checkingSync, setCheckingSync] = useState(false);
 
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
+    return localStorage.getItem('dps_drive_autobackup') === 'true';
+  });
+  const [driveUploading, setDriveUploading] = useState(false);
+
+  const handleConnectDrive = async () => {
+    setIsConnectingDrive(true);
+    try {
+      const { connectGoogleDrive } = await import('../services/googleDrive');
+      const token = await connectGoogleDrive();
+      if (token) {
+        setDriveConnected(true);
+        alert("Google Drive Connected! You can now enable Auto-Backup.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to connect Drive: " + err.message);
+    } finally {
+      setIsConnectingDrive(false);
+    }
+  };
+
+  const toggleAutoBackup = () => {
+    const newState = !autoBackupEnabled;
+    setAutoBackupEnabled(newState);
+    localStorage.setItem('dps_drive_autobackup', newState.toString());
+  };
+
+  const forceDriveUpload = async () => {
+    setDriveUploading(true);
+    try {
+      const { uploadDataToDrive } = await import('../services/googleDrive');
+      await uploadDataToDrive(data);
+      alert("Database manually synced to Google Drive!");
+    } catch (err: any) {
+      console.error(err);
+      alert("Backup to Drive failed: " + err.message);
+    } finally {
+      setDriveUploading(false);
+    }
+  };
+
   const checkSyncStatus = async () => {
     setCheckingSync(true);
     try {
@@ -405,6 +449,58 @@ service cloud.firestore {
                     </div>
 
                     <div className="grid gap-6">
+                        {/* Google Drive Auto Backup */}
+                        <div className="bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+                            <div className="flex items-center gap-6">
+                                <div className="w-16 h-16 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 shadow-sm border border-blue-100 shrink-0">
+                                    <Cloud size={32} />
+                                </div>
+                                <div>
+                                    <h4 className="text-xl font-black text-[#1B254B] uppercase tracking-tighter">Google Drive Auto-Backup</h4>
+                                    <p className="text-sm text-slate-500 mt-1 font-medium max-w-lg">
+                                        Securely mirror your data directly to your personal Google Drive. 
+                                        Once enabled, your database will be automatically exported when significant changes occur.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+                                {!driveConnected ? (
+                                    <button 
+                                        onClick={handleConnectDrive}
+                                        disabled={isConnectingDrive}
+                                        className="w-full md:w-auto px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        {isConnectingDrive ? <RefreshCw size={16} className="animate-spin" /> : <Cloud size={16} />}
+                                        Connect Google Drive
+                                    </button>
+                                ) : (
+                                    <div className="flex flex-col gap-3 w-full">
+                                        <button 
+                                            onClick={toggleAutoBackup}
+                                            className={`w-full px-6 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 border-2 ${
+                                                autoBackupEnabled 
+                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-500 hover:bg-emerald-100' 
+                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            {autoBackupEnabled ? <Check size={16} /> : <div className="w-4 h-4 rounded-full border-2 border-slate-300" />}
+                                            {autoBackupEnabled ? 'Auto-Backup Active' : 'Enable Auto-Backup'}
+                                        </button>
+                                        
+                                        <button 
+                                            onClick={forceDriveUpload}
+                                            disabled={driveUploading}
+                                            className="w-full px-6 py-3 bg-[#1B254B] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {driveUploading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+                                            Force Sync Now
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
                         <div className="bg-slate-50 rounded-[32px] p-8 border border-slate-200 flex items-center gap-8 shadow-sm">
                             <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center text-primary-500 shadow-xl border border-slate-100">
                                 <Download size={32} />

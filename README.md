@@ -1,20 +1,11 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Peak Performance Growth Portal
 
-# Run and deploy your AI Studio app
+A robust, full-stack application designed to track performance, manage tasks, and drive personal growth.
 
-This contains everything you need to run your app locally.
+## Core Features
+- **Data Persistence**: Offline-first architecture with automatic background synchronization to Firebase Firestore and automated data backups to Google Drive.
+- **Robust Synchronization**: Integrated a retry mechanism using exponential backoff that automatically detects and resolves network interruptions to guarantee high data reliability.
+- **Resilient Engineering**: Real-time error handling with non-intrusive UI feedback ensuring consistent and persistent state management.
 
-View your app in AI Studio: https://ai.studio/apps/c2b44218-2f90-40ac-a336-0dd6d0b276b4
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Setup Instructions
+Configure standard Firebase credentials via `firebase-applet-config.json`. Ensure the environment variables align with `.env.example` configurations.

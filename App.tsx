@@ -39,7 +39,7 @@ import {
 } from "./services/firebase";
 import { decodeFromURLSafeBase64 } from "./services/sharingEncoder";
 import { storage } from "./services/storage";
-import { Menu, MessageSquare, X, GraduationCap, Cloud, Check } from "lucide-react";
+import { Menu, MessageSquare, X, GraduationCap, Cloud, Check, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { v4 as uuidv4 } from "uuid";
 import { addMonths, format } from "date-fns";
@@ -233,6 +233,7 @@ const App: React.FC = () => {
   const lastLocalUpdateRef = useRef<number>(0);
   const hasUnsavedChangesRef = useRef<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const data = dataLocal;
   const currentDataRef = useRef<AppData>(dataLocal);
   useEffect(() => {
@@ -267,6 +268,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<AppData[]>([]);
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
   const [showSyncToast, setShowSyncToast] = useState(false);
+  const [driveBackupError, setDriveBackupError] = useState<string | null>(null);
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -361,31 +363,75 @@ const App: React.FC = () => {
         setIsSyncing(true);
         isSyncingRef.current = true;
         
-        try {
-          // Pass 'true' to ensure immediate network dispatch in services/firebase.ts
-          await saveData(currentUser.uid!, dataToSave, true);
-          const now = Date.now();
-          lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || now;
-          setLastSyncedTime(now);
-          previousDataSyncRef.current = dataStr;
-          lastScheduledDataStrRef.current = dataStr;
-          
-          if (JSON.stringify(currentDataRef.current) === dataStr) {
-            hasUnsavedChangesRef.current = false;
+        const attemptSync = async (retries = 0, delay = 1000) => {
+          try {
+            // Pass 'true' to ensure immediate network dispatch in services/firebase.ts
+            await saveData(currentUser.uid!, dataToSave, true);
+            const now = Date.now();
+            lastSyncedUpdatedAtRef.current = dataToSave.updatedAt || now;
+            setLastSyncedTime(now);
+            previousDataSyncRef.current = dataStr;
+            lastScheduledDataStrRef.current = dataStr;
+            
+            if (JSON.stringify(currentDataRef.current) === dataStr) {
+              hasUnsavedChangesRef.current = false;
+            }
+            
+            setShowSyncToast(true);
+            setTimeout(() => setShowSyncToast(false), 2000);
+            setIsSyncing(false);
+            isSyncingRef.current = false;
+          } catch (err) {
+            console.error(`Auto Sync Error (attempt ${retries + 1}):`, err);
+            
+            // If data changed during sync attempt, don't retry this old version
+            if (currentDataRef.current.updatedAt > dataToSave.updatedAt) {
+              setIsSyncing(false);
+              isSyncingRef.current = false;
+              return;
+            }
+            
+            // Exponential backoff up to 5 retries (max ~32s delay)
+            if (retries < 5) {
+              retryTimerRef.current = setTimeout(() => attemptSync(retries + 1, delay * 2), delay);
+            } else {
+              setIsSyncing(false);
+              isSyncingRef.current = false;
+            }
           }
-          
-          setShowSyncToast(true);
-          setTimeout(() => setShowSyncToast(false), 2000);
-        } catch (err) {
-          console.error("Auto Sync Error:", err);
-        } finally {
-          setIsSyncing(false);
-          isSyncingRef.current = false;
-        }
+        };
+
+        attemptSync();
       }, 500); // Back to 500ms for "Google Docs" live feel, but with optimized Firestore parallel chunking
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      };
     }
   }, [data?.updatedAt, currentUser?.uid, loading, isSyncing]);
+
+  // Google Drive Auto-Backup Hook
+  useEffect(() => {
+    if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
+      if (localStorage.getItem('dps_drive_autobackup') !== 'true') return;
+      
+      const timer = setTimeout(async () => {
+        try {
+          const { getGoogleAccessToken, uploadDataToDrive } = await import('./services/googleDrive');
+          if (getGoogleAccessToken()) {
+            await uploadDataToDrive(currentDataRef.current);
+            console.log("Auto-backed up to Google Drive");
+            setDriveBackupError(null);
+          }
+        } catch (err: any) {
+          console.error("Google Drive auto-backup failed:", err);
+          setDriveBackupError(err.message || "Failed to sync to Google Drive.");
+        }
+      }, 60000); // 1 minute debounce
+      
+      return () => clearTimeout(timer);
+    }
+  }, [data?.updatedAt, currentUser?.uid, loading]);
 
   // No auto-seeding of named tasks per user request for a blank/clean start
   useEffect(() => {
@@ -1487,6 +1533,44 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-center justify-center w-4.5 h-4.5 rounded-full bg-emerald-500 text-slate-950 ml-2 shadow-inner">
               <Check size={10} strokeWidth={4} />
+            </div>
+          </motion.div>
+        )}
+
+        {driveBackupError && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-4 px-4 py-3 bg-red-50 border border-red-200 text-red-900 rounded-2xl shadow-xl font-sans"
+          >
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-600">
+              <AlertCircle size={16} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-black tracking-wider uppercase leading-none">
+                Drive Backup Failed
+              </span>
+              <span className="text-[10px] font-medium leading-normal text-red-700 mt-1 max-w-[200px] truncate">
+                {driveBackupError}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 ml-2">
+              <button 
+                onClick={() => {
+                  setDriveBackupError(null);
+                  setIsContactsOpen(true);
+                }}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors shadow-sm cursor-pointer"
+              >
+                Settings
+              </button>
+              <button 
+                onClick={() => setDriveBackupError(null)}
+                className="p-1.5 hover:bg-red-200 text-red-500 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={14} />
+              </button>
             </div>
           </motion.div>
         )}

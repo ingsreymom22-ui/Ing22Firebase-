@@ -210,6 +210,53 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     error: null
   });
   const [checkingSync, setCheckingSync] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
+    return localStorage.getItem('dps_drive_autobackup') === 'true';
+  });
+  const [driveUploading, setDriveUploading] = useState(false);
+
+  const handleConnectDrive = async () => {
+    setIsConnectingDrive(true);
+    try {
+      const { connectGoogleDrive } = await import('../services/googleDrive');
+      const token = await connectGoogleDrive();
+      if (token) {
+        setDriveConnected(true);
+        alert("Google Drive Connected! You can now enable Auto-Backup.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to connect Drive: " + err.message);
+    } finally {
+      setIsConnectingDrive(false);
+    }
+  };
+
+  const toggleAutoBackup = () => {
+    const newState = !autoBackupEnabled;
+    setAutoBackupEnabled(newState);
+    localStorage.setItem('dps_drive_autobackup', newState.toString());
+  };
+
+  const forceDriveUpload = async () => {
+    if (!appData) {
+      alert("No data available to backup");
+      return;
+    }
+    setDriveUploading(true);
+    try {
+      const { uploadDataToDrive } = await import('../services/googleDrive');
+      await uploadDataToDrive(appData);
+      alert("Database manually synced to Google Drive!");
+    } catch (err: any) {
+      console.error(err);
+      alert("Backup to Drive failed: " + err.message);
+    } finally {
+      setDriveUploading(false);
+    }
+  };
 
   const checkSyncStatus = async () => {
     setCheckingSync(true);
@@ -1012,6 +1059,55 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     >
                         <Settings2 size={12} /> Add Priority Level
                     </button>
+                </div>
+            </div>
+
+            {/* Google Drive Auto-Backup */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-800 font-black mb-2">
+                    <Cloud size={18} className="text-blue-500" />
+                    <h3 className="tracking-wide text-[11px] uppercase">Google Drive Auto-Backup</h3>
+                </div>
+
+                <div className="bg-white/50 border border-white/60 p-4 rounded-2xl space-y-4 shadow-sm flex flex-col items-center">
+                    <p className="text-[10px] text-slate-500 leading-relaxed text-center">
+                        Securely mirror your data directly to your personal Google Drive. 
+                        Once enabled, your database will be automatically exported when significant changes occur.
+                    </p>
+                    
+                    {!driveConnected ? (
+                        <button 
+                            onClick={handleConnectDrive}
+                            disabled={isConnectingDrive}
+                            className="w-full px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isConnectingDrive ? <RefreshCw size={14} className="animate-spin" /> : <Cloud size={14} />}
+                            Connect Google Drive
+                        </button>
+                    ) : (
+                        <div className="flex flex-col gap-3 w-full">
+                            <button 
+                                onClick={toggleAutoBackup}
+                                className={`w-full px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center justify-center gap-2 border-2 ${
+                                    autoBackupEnabled 
+                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-500 hover:bg-emerald-100' 
+                                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                }`}
+                            >
+                                {autoBackupEnabled ? <Check size={14} /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                                {autoBackupEnabled ? 'Auto-Backup Active' : 'Enable Auto-Backup'}
+                            </button>
+                            
+                            <button 
+                                onClick={forceDriveUpload}
+                                disabled={driveUploading}
+                                className="w-full px-6 py-2 bg-slate-800 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {driveUploading ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
+                                Force Sync Now
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
