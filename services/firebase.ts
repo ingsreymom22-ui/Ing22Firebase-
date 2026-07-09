@@ -668,7 +668,7 @@ export const saveTopic = async (userId: string, topic: any, category: string = '
   for (const op of allOps) {
     try {
       const { id, payload } = op;
-      await saveAutoChunked('dps_topics', id, payload, {}, 'data');
+      await saveAutoChunked('dps_topics', id, payload, { owner_id: auth.currentUser!.uid }, 'data');
     } catch (e) {
       console.error("Error saving topic node", op.id, e);
     }
